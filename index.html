@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aircraft Configuration Schedule</title>
+<style>
+  :root{
+    --ink:#182430;
+    --paper:#f4f6f8;
+    --panel:#ffffff;
+    --line:#dbe1e6;
+    --accent:#1e5f8c;
+    --accent-strong:#134463;
+    --green:#3fa66a;
+    --green-bg:#e4f5ea;
+    --red:#d1493f;
+    --red-bg:#fbe8e6;
+    --amber:#c9911f;
+    --grey-strong:#5b6773;
+    --radius:10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-size:14px;}
+  #app{max-width:1200px;margin:0 auto;padding:20px 20px 60px;}
+
+  #stickyTop{position:sticky;top:0;z-index:30;background:var(--paper);padding-bottom:6px;}
+  .dark-banner{
+    background:#10202f;color:#fff;display:flex;align-items:center;justify-content:space-between;
+    padding:12px 20px;border-bottom:2px solid var(--ink);
+  }
+  .db-left{display:flex;align-items:center;gap:10px;}
+  .db-icon{font-size:20px;}
+  .db-title{font-weight:800;font-size:16px;color:#fff;}
+  .db-gear-wrap{position:relative;}
+  .db-icon-btn{
+    background:transparent;border:1px solid rgba(255,255,255,.25);color:#fff;width:34px;height:34px;
+    border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;
+  }
+  .db-icon-btn:hover{background:rgba(255,255,255,.1);}
+  .db-dropdown{
+    display:none;position:absolute;top:100%;right:0;margin-top:6px;background:#fff;color:var(--ink);
+    border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow:hidden;z-index:40;flex-direction:column;min-width:200px;
+  }
+  .db-dropdown.show{display:flex;}
+  .db-dropdown button{
+    background:none;border:none;text-align:left;padding:11px 16px;font-size:13px;cursor:pointer;color:var(--ink);
+    border-bottom:1px solid var(--line);
+  }
+  .db-dropdown button:last-child{border-bottom:none;}
+  .db-dropdown button:hover{background:var(--paper);}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 20px 0;}
+  .toolbar button{
+    padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);
+    cursor:pointer;font-size:13px;color:var(--ink);
+  }
+  .toolbar button.primary{background:var(--accent-strong);color:#fff;border-color:var(--accent-strong);}
+  .toolbar label{font-size:12.5px;color:var(--grey-strong);display:flex;align-items:center;gap:6px;}
+  .toolbar input[type=number]{width:50px;padding:6px 7px;border:1px solid var(--line);border-radius:7px;font-size:13px;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:18px 20px;}
+  .panel h2{margin:0 0 14px;font-size:15px;}
+
+  .week-nav{display:flex;align-items:center;gap:10px;margin:16px 20px 4px;}
+  .week-nav button{
+    width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:15px;
+  }
+  .week-nav .today-btn{width:auto;border-radius:8px;padding:0 12px;font-size:12.5px;}
+
+  table.wk{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px;}
+  table.wk th, table.wk td{border:1.5px solid #000;padding:4px;vertical-align:top;font-size:12px;}
+  table.wk th.acft{width:130px;text-align:left;padding:6px 8px;background:var(--panel);}
+  table.wk th.day{background:#e9eef2;text-align:center;padding:6px 2px;}
+  table.wk th.day .dname{font-weight:800;}
+  table.wk th.day .ddate{font-size:11px;color:var(--grey-strong);font-weight:600;}
+  table.wk th.day.today{background:#d6e6f2;}
+  table.wk td.acft-name{font-weight:700;background:#fafcfd;}
+  td.daycell{cursor:pointer;min-height:52px;height:52px;position:relative;}
+  td.daycell:hover{background:#f5f9fb;}
+  td.daycell.today{background:#f0f7fc;}
+  .chg-badge{
+    display:block;border-radius:4px;padding:1px 4px;margin-bottom:2px;font-size:10.5px;font-weight:700;line-height:1.4;
+  }
+  .chg-badge.install{background:var(--green-bg);color:var(--green);}
+  .chg-badge.remove{background:var(--red-bg);color:var(--red);}
+  .note-dot{position:absolute;top:2px;right:3px;font-size:10px;}
+
+  .config-grid{display:flex;flex-wrap:wrap;gap:12px;}
+  .config-card{border:1px solid var(--line);border-radius:9px;padding:12px 14px;min-width:200px;flex:1;background:#fafcfd;}
+  .config-card h3{margin:0 0 8px;font-size:13.5px;}
+  .config-card .model-tag{font-size:11px;color:var(--grey-strong);margin-bottom:8px;}
+  .config-chip{
+    display:inline-block;background:var(--green-bg);color:var(--green);border-radius:999px;padding:3px 10px;
+    font-size:11.5px;font-weight:700;margin:0 5px 5px 0;
+  }
+  .config-empty{font-size:12px;color:var(--grey-strong);font-style:italic;}
+
+  .aircraft-list, .item-list, .model-list{display:flex;flex-direction:column;gap:8px;}
+  .aircraft-row, .item-row, .model-row{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;
+  }
+  .aircraft-row .name, .item-row .name, .model-row .name{font-weight:700;min-width:100px;}
+  .aircraft-row .meta, .item-row .meta{color:var(--grey-strong);flex:1;}
+  .aircraft-row button, .item-row button, .model-row button{
+    border:none;background:none;color:var(--red);cursor:pointer;font-size:12px;
+  }
+  .aircraft-row button.edit, .item-row button.edit{color:var(--accent);}
+  .add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;}
+  .add-row input, .add-row select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;}
+  .add-row button{padding:8px 14px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-size:13px;}
+  .item-model-checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11.5px;}
+  .item-model-checks label{display:flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;}
+
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:60;padding:16px;}
+  .modal-backdrop.show{display:flex;}
+  .modal{background:#fff;border-radius:12px;padding:22px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;}
+  .modal h3{margin:0 0 4px;font-size:15px;display:flex;justify-content:space-between;align-items:center;}
+  .modal .close-x{border:none;background:none;font-size:18px;cursor:pointer;color:var(--grey-strong);}
+  .modal .sub{font-size:12px;color:var(--grey-strong);margin-bottom:14px;}
+  .modal button.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .modal button{padding:8px 14px;border-radius:7px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:13px;}
+  .existing-chg{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .existing-chg .del{margin-left:auto;color:var(--red);cursor:pointer;font-size:12px;}
+  .add-change-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0;}
+  .add-change-row select{flex:1;padding:8px;border:1px solid var(--line);border-radius:7px;font-size:13px;min-width:140px;}
+  textarea#noteTextarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;font-size:13px;min-height:70px;resize:vertical;}
+
+  #printArea{display:none;}
+  @page{margin:10mm;}
+  @media print{
+    #gate, #app{display:none !important;}
+    #printArea{display:block !important;}
+    #printArea table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px;}
+    #printArea th, #printArea td{border:1.5px solid #000 !important;padding:4px;}
+    #printArea th{background:#e9eef2 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    * {-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+  }
+
+  #gate{position:fixed;inset:0;background:var(--paper);z-index:100;display:flex;align-items:center;justify-content:center;}
+  #gate.hidden{display:none;}
+  .gate-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px;width:90%;max-width:320px;text-align:center;}
+  .gate-box h2{margin:0 0 6px;font-size:18px;}
+  .gate-box p{margin:0 0 16px;font-size:12.5px;color:var(--grey-strong);}
+  .gate-box input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;font-size:14px;margin-bottom:10px;}
+  .gate-box button{width:100%;padding:9px 10px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:14px;cursor:pointer;}
+  .gate-error{color:var(--red);font-size:12px;min-height:16px;margin-bottom:6px;}
+  .note{font-size:11.5px;color:var(--grey-strong);line-height:1.5;padding:0 20px;}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-box">
+    <h2 id="gateTitle">Enter password</h2>
+    <p id="gateSub">This schedule is password-protected.</p>
+    <div class="gate-error" id="gateError"></div>
+    <input type="password" id="gatePass" placeholder="Password" autocomplete="off">
+    <input type="password" id="gatePass2" placeholder="Confirm password" style="display:none;" autocomplete="off">
+    <button id="gateBtn">Unlock</button>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+  <div id="stickyTop">
+    <div class="dark-banner">
+      <div class="db-left">
+        <span class="db-icon">✈️</span>
+        <span class="db-title">Aircraft Configuration Schedule</span>
+      </div>
+      <div class="db-gear-wrap">
+        <button class="db-icon-btn" id="gearBtn" title="Settings">⚙</button>
+        <div class="db-dropdown" id="gearDropdown">
+          <button id="openAircraftBtn">Manage aircraft</button>
+          <button id="openItemsBtn">Manage items &amp; models</button>
+          <button id="changePassBtn">Change password</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <span style="flex:1"></span>
+      <label>Weeks to include <input type="number" id="pdfWeekCount" min="1" max="8" value="2"></label>
+      <button id="pdfBtn" class="primary">Prepare PDF</button>
+      <button id="emailBtn">Print &amp; email schedule</button>
+    </div>
+  </div>
+
+  <div class="week-nav">
+    <button id="weekPrev">‹</button>
+    <button class="today-btn" id="weekTodayBtn">This week</button>
+    <button id="weekNext">›</button>
+    <span class="note" style="padding:0;" id="weekRangeLabel"></span>
+  </div>
+
+  <div class="panel" style="overflow-x:auto;">
+    <h2 id="week1Title">Week of …</h2>
+    <div id="week1Wrap"></div>
+  </div>
+  <div class="panel" style="overflow-x:auto;">
+    <h2 id="week2Title">Week of …</h2>
+    <div id="week2Wrap"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Current configuration</h2>
+    <div class="config-grid" id="configGrid"></div>
+  </div>
+
+  <div class="note">
+    Click any day cell to add or edit configuration changes (installs/removals) for that aircraft, or to add a note for that day. Green badges are installs, red badges are removals. "Current configuration" reflects the most recent action for each item, up through today.
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<!-- Day cell modal -->
+<div class="modal-backdrop" id="dayModalBackdrop">
+  <div class="modal">
+    <h3><span id="dayModalTitle">Aircraft — Date</span><button class="close-x" id="dayModalClose">×</button></h3>
+    <div class="sub">Configuration changes for this day</div>
+    <div id="existingChanges"></div>
+    <div class="add-change-row">
+      <select id="changeItemSelect"></select>
+      <select id="changeActionSelect">
+        <option value="INSTALL">Install</option>
+        <option value="REMOVE">Remove</option>
+      </select>
+      <button id="addChangeBtn">Add</button>
+    </div>
+    <div class="sub" style="margin-top:14px;">Notes for this day</div>
+    <textarea id="noteTextarea" placeholder="Additional instructions…"></textarea>
+    <div style="margin-top:12px;display:flex;gap:8px;">
+      <button class="primary" id="saveNoteBtn">Save note</button>
+      <button id="dayModalCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Aircraft management modal -->
+<div class="modal-backdrop" id="aircraftModalBackdrop">
+  <div class="modal">
+    <h3>Manage aircraft<button class="close-x" id="aircraftModalClose">×</button></h3>
+    <div class="add-row">
+      <input id="newAcftTail" placeholder="Registration number (e.g. C-FANK)">
+      <select id="newAcftModel"></select>
+      <button id="addAcftBtn">Add aircraft</button>
+    </div>
+    <div class="aircraft-list" id="aircraftList"></div>
+  </div>
+</div>
+
+<!-- Items & models management modal -->
+<div class="modal-backdrop" id="itemsModalBackdrop">
+  <div class="modal" style="max-width:520px;">
+    <h3>Items &amp; models<button class="close-x" id="itemsModalClose">×</button></h3>
+
+    <div class="sub">Models</div>
+    <div class="add-row">
+      <input id="newModelName" placeholder="Model name (e.g. AS350)">
+      <button id="addModelBtn">Add model</button>
+    </div>
+    <div class="model-list" id="modelList" style="margin-bottom:18px;"></div>
+
+    <div class="sub">Configuration items</div>
+    <div class="add-row">
+      <input id="newItemName" placeholder="Item name (e.g. Cargo Pod)">
+      <button id="addItemBtn">Add item</button>
+    </div>
+    <div class="item-list" id="itemList"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- Supabase ----------
+  const SUPABASE_URL = 'https://frlehxadkvgwzyxovwua.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_ioAPLi8DWuC0HCUUYEeQ3Q_dildZYKI';
+  const SUPABASE_CONFIGURED = !SUPABASE_URL.includes('YOUR_') && !SUPABASE_ANON_KEY.includes('YOUR_');
+
+  async function apiGet(path){
+    if(!SUPABASE_CONFIGURED) return [];
+    try{
+      const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, { headers:{ apikey: SUPABASE_ANON_KEY } });
+      if(!res.ok) return [];
+      return await res.json();
+    }catch(e){ return []; }
+  }
+  async function apiInsert(table, body, returnRep){
+    if(!SUPABASE_CONFIGURED) return null;
+    try{
+      const res = await fetch(SUPABASE_URL + '/rest/v1/' + table, {
+        method:'POST',
+        headers:{ apikey:SUPABASE_ANON_KEY, 'Content-Type':'application/json', Prefer: returnRep?'return=representation':'return=minimal' },
+        body: JSON.stringify(body)
+      });
+      if(!res.ok) return null;
+      return returnRep ? await res.json() : true;
+    }catch(e){ return null; }
+  }
+  async function apiUpsert(table, body){
+    if(!SUPABASE_CONFIGURED) return;
+    try{
+      await fetch(SUPABASE_URL + '/rest/v1/' + table, {
+        method:'POST',
+        headers:{ apikey:SUPABASE_ANON_KEY, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(body)
+      });
+    }catch(e){}
+  }
+  async function apiPatch(table, filterQS, body){
+    if(!SUPABASE_CONFIGURED) return;
+    try{
+      await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + filterQS, {
+        method:'PATCH',
+        headers:{ apikey:SUPABASE_ANON_KEY, 'Content-Type':'application/json', Prefer:'return=minimal' },
+        body: JSON.stringify(body)
+      });
+    }catch(e){}
+  }
+  async function apiDelete(table, filterQS){
+    if(!SUPABASE_CONFIGURED) return;
+    try{
+      await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + filterQS, { method:'DELETE', headers:{ apikey:SUPABASE_ANON_KEY } });
+    }catch(e){}
+  }
+  async function getSetting(key){
+    const rows = await apiGet('acft_settings?key=eq.' + encodeURIComponent(key) + '&select=value');
+    return rows.length ? rows[0].value : null;
+  }
+  async function setSetting(key, value){ await apiUpsert('acft_settings', {key, value}); }
+  async function sha256(text){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  // ---------- password gate ----------
+  async function initGate(){
+    const gate = document.getElementById('gate');
+    const app = document.getElementById('app');
+    const title = document.getElementById('gateTitle');
+    const sub = document.getElementById('gateSub');
+    const err = document.getElementById('gateError');
+    const p1 = document.getElementById('gatePass');
+    const p2 = document.getElementById('gatePass2');
+    const btn = document.getElementById('gateBtn');
+
+    if(!SUPABASE_CONFIGURED){
+      err.textContent = 'Heads up: this copy isn\'t connected to the database yet.';
+    }
+    let existingHash = null;
+    try{ existingHash = await getSetting('app_password'); }catch(e){}
+    const settingUp = !existingHash;
+    if(settingUp){
+      title.textContent = 'Set a password';
+      sub.textContent = 'Create a password to protect this schedule.';
+      p2.style.display = 'block'; btn.textContent = 'Set password';
+    } else {
+      title.textContent = 'Enter password';
+      sub.textContent = 'This schedule is password-protected.';
+      p2.style.display = 'none'; btn.textContent = 'Unlock';
+    }
+    function unlock(){
+      gate.classList.add('hidden');
+      app.style.display = 'block';
+      initAll();
+    }
+    btn.onclick = async ()=>{
+      err.textContent = '';
+      if(settingUp){
+        if(!p1.value || p1.value.length<4){ err.textContent='Use at least 4 characters.'; return; }
+        if(p1.value !== p2.value){ err.textContent='Passwords do not match.'; return; }
+        await setSetting('app_password', await sha256(p1.value));
+        unlock();
+      } else {
+        const hash = await sha256(p1.value);
+        if(hash === existingHash){ unlock(); }
+        else { err.textContent = 'Incorrect password.'; p1.value=''; }
+      }
+    };
+    p1.addEventListener('keydown', e=>{ if(e.key==='Enter' && !settingUp) btn.click(); });
+    p2.addEventListener('keydown', e=>{ if(e.key==='Enter') btn.click(); });
+  }
+
+  document.getElementById('changePassBtn').onclick = async ()=>{
+    document.getElementById('gearDropdown').classList.remove('show');
+    const existingHash = await getSetting('app_password');
+    const cur = prompt('Enter current password:');
+    if(cur===null) return;
+    if(existingHash && await sha256(cur) !== existingHash){ alert('Incorrect current password.'); return; }
+    const next = prompt('Enter new password (at least 4 characters):');
+    if(next===null) return;
+    if(next.length<4){ alert('Password too short.'); return; }
+    if(next !== prompt('Confirm new password:')){ alert('Passwords did not match.'); return; }
+    await setSetting('app_password', await sha256(next));
+    alert('Password updated.');
+  };
+
+  // ---------- state ----------
+  let aircraft = [];
+  let models = [];
+  let items = [];
+  let modelItems = []; // {model_name, item_id}
+  let weekEvents = {}; // "aircraftId|date" -> [{id,item_id,action}]
+  let dayNotes = {};   // "aircraftId|date" -> note text
+  let allHistoryEvents = []; // full history up to today, for current-config computation
+  let weekOffset = 0;  // 0 = this week, +1 = next week window, etc.
+  let dayModalCtx = null; // {aircraftId, dateStr}
+
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function pad(n){ return n<10 ? '0'+n : ''+n; }
+  function toDateStr(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function getSunday(d){ const nd = new Date(d); nd.setHours(0,0,0,0); nd.setDate(nd.getDate() - nd.getDay()); return nd; }
+  function addDays(d, n){ const nd = new Date(d); nd.setDate(nd.getDate()+n); return nd; }
+  function fmtShort(d){ const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return months[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear(); }
+
+  function itemsForModel(modelName){
+    const ids = new Set(modelItems.filter(mi=>mi.model_name===modelName).map(mi=>mi.item_id));
+    return items.filter(it=>ids.has(it.id));
+  }
+  function itemName(id){ const it = items.find(i=>i.id===id); return it ? it.name : '(unknown item)'; }
+
+  // ---------- data loading ----------
+  async function loadStaticData(){
+    aircraft = await apiGet('aircraft?select=*&order=tail_number.asc');
+    models = await apiGet('models?select=*&order=name.asc');
+    items = await apiGet('config_items?select=*&order=name.asc');
+    modelItems = await apiGet('model_items?select=*');
+  }
+
+  async function loadWeekWindow(){
+    const win = getWindowDates();
+    const from = toDateStr(win.week1Start), to = toDateStr(addDays(win.week2Start,6));
+    const rows = await apiGet('config_events?event_date=gte.'+from+'&event_date=lte.'+to+'&select=*');
+    weekEvents = {};
+    rows.forEach(r=>{
+      const k = r.aircraft_id + '|' + r.event_date;
+      if(!weekEvents[k]) weekEvents[k] = [];
+      weekEvents[k].push(r);
+    });
+    const noteRows = await apiGet('day_notes?note_date=gte.'+from+'&note_date=lte.'+to+'&select=*');
+    dayNotes = {};
+    noteRows.forEach(r=>{ dayNotes[r.aircraft_id+'|'+r.note_date] = r.note; });
+  }
+
+  async function loadHistoryForCurrentConfig(){
+    const todayStr = toDateStr(new Date());
+    allHistoryEvents = await apiGet('config_events?event_date=lte.'+todayStr+'&select=*&order=event_date.asc');
+  }
+
+  function getWindowDates(){
+    const today = new Date(); today.setHours(0,0,0,0);
+    const thisSunday = getSunday(today);
+    const week1Start = addDays(thisSunday, weekOffset*7);
+    const week2Start = addDays(week1Start, 7);
+    return { today, week1Start, week2Start };
+  }
+
+  // ---------- rendering: weekly grid ----------
+  function buildWeekTable(weekStart, forPrint){
+    const today = new Date(); today.setHours(0,0,0,0);
+    const table = document.createElement('table');
+    table.className = 'wk';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const acftTh = document.createElement('th'); acftTh.className='acft'; acftTh.textContent='Aircraft';
+    headRow.appendChild(acftTh);
+    const days = [];
+    for(let i=0;i<7;i++){
+      const d = addDays(weekStart, i);
+      days.push(d);
+      const th = document.createElement('th'); th.className='day';
+      if(toDateStr(d)===toDateStr(today)) th.classList.add('today');
+      const dn = document.createElement('div'); dn.className='dname'; dn.textContent = DOW[d.getDay()];
+      const dd = document.createElement('div'); dd.className='ddate'; dd.textContent = (d.getMonth()+1)+'/'+d.getDate();
+      th.appendChild(dn); th.appendChild(dd);
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const activeAircraft = aircraft.filter(a=>a.active!==false);
+    if(!activeAircraft.length){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td'); td.colSpan = 8; td.style.textAlign='center'; td.style.padding='16px';
+      td.textContent = 'No aircraft added yet — use the gear menu to add one.';
+      tr.appendChild(td); tbody.appendChild(tr);
+    }
+    activeAircraft.forEach(a=>{
+      const tr = document.createElement('tr');
+      const nameTd = document.createElement('td'); nameTd.className='acft-name';
+      nameTd.innerHTML = a.tail_number + '<br><span style="font-weight:400;color:var(--grey-strong);font-size:11px;">' + a.model + '</span>';
+      tr.appendChild(nameTd);
+      days.forEach(d=>{
+        const dateStr = toDateStr(d);
+        const key = a.id + '|' + dateStr;
+        const td = document.createElement('td');
+        td.className = 'daycell';
+        if(dateStr === toDateStr(today)) td.classList.add('today');
+        const changes = weekEvents[key] || [];
+        changes.forEach(c=>{
+          const b = document.createElement('span');
+          b.className = 'chg-badge ' + (c.action==='INSTALL' ? 'install':'remove');
+          b.textContent = (c.action==='INSTALL' ? '+ ':'− ') + itemName(c.item_id);
+          td.appendChild(b);
+        });
+        if(dayNotes[key]){
+          const dot = document.createElement('span'); dot.className='note-dot'; dot.textContent='📝';
+          td.appendChild(dot);
+        }
+        if(!forPrint){
+          td.onclick = ()=> openDayModal(a.id, dateStr);
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  async function renderWeeks(){
+    await loadWeekWindow();
+    const win = getWindowDates();
+    document.getElementById('week1Title').textContent = 'Week of ' + fmtShort(win.week1Start);
+    document.getElementById('week2Title').textContent = 'Week of ' + fmtShort(win.week2Start);
+    document.getElementById('weekRangeLabel').textContent =
+      fmtShort(win.week1Start) + ' – ' + fmtShort(addDays(win.week2Start,6));
+    const w1 = document.getElementById('week1Wrap'); w1.innerHTML=''; w1.appendChild(buildWeekTable(win.week1Start, false));
+    const w2 = document.getElementById('week2Wrap'); w2.innerHTML=''; w2.appendChild(buildWeekTable(win.week2Start, false));
+  }
+
+  // ---------- current configuration ----------
+  async function renderCurrentConfig(){
+    await loadHistoryForCurrentConfig();
+    const grid = document.getElementById('configGrid');
+    grid.innerHTML = '';
+    const activeAircraft = aircraft.filter(a=>a.active!==false);
+    if(!activeAircraft.length){
+      grid.innerHTML = '<div class="config-empty">No aircraft added yet.</div>';
+      return;
+    }
+    activeAircraft.forEach(a=>{
+      const card = document.createElement('div'); card.className='config-card';
+      const h3 = document.createElement('h3'); h3.textContent = a.tail_number;
+      const modelTag = document.createElement('div'); modelTag.className='model-tag'; modelTag.textContent = a.model;
+      card.appendChild(h3); card.appendChild(modelTag);
+
+      const latestByItem = {};
+      allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
+      const installedIds = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL');
+      if(!installedIds.length){
+        const empty = document.createElement('div'); empty.className='config-empty'; empty.textContent='No items currently installed.';
+        card.appendChild(empty);
+      } else {
+        installedIds.forEach(id=>{
+          const chip = document.createElement('span'); chip.className='config-chip'; chip.textContent = itemName(id);
+          card.appendChild(chip);
+        });
+      }
+      grid.appendChild(card);
+    });
+  }
+
+  async function renderAll(){
+    await renderWeeks();
+    await renderCurrentConfig();
+  }
+
+  // ---------- day modal ----------
+  const dayBackdrop = document.getElementById('dayModalBackdrop');
+  function closeDayModal(){ dayBackdrop.classList.remove('show'); dayModalCtx = null; }
+  document.getElementById('dayModalClose').onclick = closeDayModal;
+  document.getElementById('dayModalCloseBtn').onclick = closeDayModal;
+
+  async function openDayModal(aircraftId, dateStr){
+    const a = aircraft.find(x=>x.id===aircraftId);
+    if(!a) return;
+    dayModalCtx = {aircraftId, dateStr};
+    const dObj = new Date(dateStr+'T00:00:00');
+    document.getElementById('dayModalTitle').textContent = a.tail_number + ' — ' + DOW[dObj.getDay()] + ', ' + fmtShort(dObj);
+
+    const itemSel = document.getElementById('changeItemSelect');
+    itemSel.innerHTML = '';
+    itemsForModel(a.model).forEach(it=>{
+      const opt = document.createElement('option'); opt.value = it.id; opt.textContent = it.name;
+      itemSel.appendChild(opt);
+    });
+    if(!itemsForModel(a.model).length){
+      const opt = document.createElement('option'); opt.textContent = 'No items set up for this model yet';
+      itemSel.appendChild(opt);
+    }
+
+    renderExistingChanges();
+    document.getElementById('noteTextarea').value = dayNotes[aircraftId+'|'+dateStr] || '';
+    dayBackdrop.classList.add('show');
+  }
+
+  function renderExistingChanges(){
+    const wrap = document.getElementById('existingChanges');
+    wrap.innerHTML = '';
+    if(!dayModalCtx) return;
+    const key = dayModalCtx.aircraftId + '|' + dayModalCtx.dateStr;
+    const changes = weekEvents[key] || [];
+    if(!changes.length){
+      const p = document.createElement('div'); p.className='sub'; p.style.margin='6px 0'; p.textContent = 'No changes scheduled yet.';
+      wrap.appendChild(p);
+      return;
+    }
+    changes.forEach(c=>{
+      const row = document.createElement('div'); row.className='existing-chg';
+      const label = document.createElement('span');
+      label.textContent = (c.action==='INSTALL' ? '➕ Install ':'➖ Remove ') + itemName(c.item_id);
+      label.style.color = c.action==='INSTALL' ? 'var(--green)' : 'var(--red)';
+      const del = document.createElement('span'); del.className='del'; del.textContent='Remove';
+      del.onclick = async ()=>{
+        await apiDelete('config_events', 'id=eq.'+c.id);
+        await loadWeekWindow();
+        renderExistingChanges();
+        await renderWeeks();
+        await renderCurrentConfig();
+      };
+      row.appendChild(label); row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('addChangeBtn').onclick = async ()=>{
+    if(!dayModalCtx) return;
+    const itemSel = document.getElementById('changeItemSelect');
+    const itemId = itemSel.value;
+    if(!itemId){ alert('Set up items for this model first (gear menu → Manage items & models).'); return; }
+    const action = document.getElementById('changeActionSelect').value;
+    await apiInsert('config_events', {
+      aircraft_id: dayModalCtx.aircraftId, item_id: itemId, event_date: dayModalCtx.dateStr, action
+    }, false);
+    await loadWeekWindow();
+    renderExistingChanges();
+    await renderWeeks();
+    await renderCurrentConfig();
+  };
+
+  document.getElementById('saveNoteBtn').onclick = async ()=>{
+    if(!dayModalCtx) return;
+    const note = document.getElementById('noteTextarea').value.trim();
+    await apiUpsert('day_notes', { aircraft_id: dayModalCtx.aircraftId, note_date: dayModalCtx.dateStr, note: note || null });
+    await loadWeekWindow();
+    await renderWeeks();
+  };
+
+  // ---------- week navigation ----------
+  document.getElementById('weekPrev').onclick = async ()=>{ weekOffset -= 1; await renderWeeks(); };
+  document.getElementById('weekNext').onclick = async ()=>{ weekOffset += 1; await renderWeeks(); };
+  document.getElementById('weekTodayBtn').onclick = async ()=>{ weekOffset = 0; await renderWeeks(); };
+
+  // ---------- gear dropdown ----------
+  const gearBtn = document.getElementById('gearBtn');
+  const gearDropdown = document.getElementById('gearDropdown');
+  gearBtn.onclick = (e)=>{ e.stopPropagation(); gearDropdown.classList.toggle('show'); };
+  document.addEventListener('click', (e)=>{
+    if(gearDropdown.classList.contains('show') && !gearDropdown.contains(e.target) && e.target!==gearBtn){
+      gearDropdown.classList.remove('show');
+    }
+  });
+
+  // ---------- aircraft management ----------
+  const aircraftBackdrop = document.getElementById('aircraftModalBackdrop');
+  document.getElementById('openAircraftBtn').onclick = ()=>{
+    gearDropdown.classList.remove('show');
+    populateModelSelect(document.getElementById('newAcftModel'));
+    renderAircraftList();
+    aircraftBackdrop.classList.add('show');
+  };
+  document.getElementById('aircraftModalClose').onclick = ()=> aircraftBackdrop.classList.remove('show');
+
+  function populateModelSelect(selectEl){
+    selectEl.innerHTML = '';
+    if(!models.length){
+      const opt = document.createElement('option'); opt.textContent = 'Add a model first';
+      selectEl.appendChild(opt);
+      return;
+    }
+    models.forEach(m=>{
+      const opt = document.createElement('option'); opt.value = m.name; opt.textContent = m.name;
+      selectEl.appendChild(opt);
+    });
+  }
+
+  function renderAircraftList(){
+    const wrap = document.getElementById('aircraftList');
+    wrap.innerHTML = '';
+    if(!aircraft.length){
+      wrap.innerHTML = '<div class="config-empty">No aircraft added yet.</div>';
+      return;
+    }
+    aircraft.forEach(a=>{
+      const row = document.createElement('div'); row.className='aircraft-row';
+      const name = document.createElement('span'); name.className='name'; name.textContent = a.tail_number;
+      const meta = document.createElement('span'); meta.className='meta'; meta.textContent = a.model + (a.active===false ? ' (inactive)':'');
+      const toggle = document.createElement('button'); toggle.className='edit';
+      toggle.textContent = a.active===false ? 'Reactivate' : 'Deactivate';
+      toggle.onclick = async ()=>{
+        await apiPatch('aircraft', 'id=eq.'+a.id, {active: a.active===false});
+        await loadStaticData();
+        renderAircraftList();
+        await renderAll();
+      };
+      const del = document.createElement('button'); del.textContent='Delete';
+      del.onclick = async ()=>{
+        if(!confirm('Delete '+a.tail_number+'? This also deletes all its scheduled changes and notes. This cannot be undone.')) return;
+        await apiDelete('config_events', 'aircraft_id=eq.'+a.id);
+        await apiDelete('day_notes', 'aircraft_id=eq.'+a.id);
+        await apiDelete('aircraft', 'id=eq.'+a.id);
+        await loadStaticData();
+        renderAircraftList();
+        await renderAll();
+      };
+      row.appendChild(name); row.appendChild(meta); row.appendChild(toggle); row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('addAcftBtn').onclick = async ()=>{
+    const tail = document.getElementById('newAcftTail').value.trim();
+    const model = document.getElementById('newAcftModel').value;
+    if(!tail){ alert('Enter a registration number.'); return; }
+    if(!models.length){ alert('Add a model first.'); return; }
+    await apiInsert('aircraft', {tail_number: tail, model, active:true}, false);
+    document.getElementById('newAcftTail').value = '';
+    await loadStaticData();
+    renderAircraftList();
+    await renderAll();
+  };
+
+  // ---------- items & models management ----------
+  const itemsBackdrop = document.getElementById('itemsModalBackdrop');
+  document.getElementById('openItemsBtn').onclick = ()=>{
+    gearDropdown.classList.remove('show');
+    renderModelList();
+    renderItemList();
+    itemsBackdrop.classList.add('show');
+  };
+  document.getElementById('itemsModalClose').onclick = ()=> itemsBackdrop.classList.remove('show');
+
+  function renderModelList(){
+    const wrap = document.getElementById('modelList');
+    wrap.innerHTML = '';
+    if(!models.length){ wrap.innerHTML = '<div class="config-empty">No models added yet.</div>'; return; }
+    models.forEach(m=>{
+      const row = document.createElement('div'); row.className='model-row';
+      const name = document.createElement('span'); name.className='name'; name.textContent = m.name;
+      const del = document.createElement('button'); del.textContent='Delete';
+      del.onclick = async ()=>{
+        if(!confirm('Delete model "'+m.name+'"? Aircraft already using this model will keep the name, but it will no longer be selectable for new aircraft.')) return;
+        await apiDelete('models', 'id=eq.'+m.id);
+        await apiDelete('model_items', 'model_name=eq.'+encodeURIComponent(m.name));
+        await loadStaticData();
+        renderModelList();
+        renderItemList();
+      };
+      row.appendChild(name); row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('addModelBtn').onclick = async ()=>{
+    const name = document.getElementById('newModelName').value.trim();
+    if(!name) return;
+    await apiInsert('models', {name}, false);
+    document.getElementById('newModelName').value = '';
+    await loadStaticData();
+    renderModelList();
+    renderItemList();
+  };
+
+  function renderItemList(){
+    const wrap = document.getElementById('itemList');
+    wrap.innerHTML = '';
+    if(!items.length){ wrap.innerHTML = '<div class="config-empty">No items added yet.</div>'; return; }
+    items.forEach(it=>{
+      const row = document.createElement('div'); row.className='item-row'; row.style.flexDirection='column'; row.style.alignItems='stretch';
+      const topLine = document.createElement('div'); topLine.style.cssText='display:flex;align-items:center;gap:10px;';
+      const name = document.createElement('span'); name.className='name'; name.textContent = it.name;
+      const del = document.createElement('button'); del.textContent='Delete item'; del.style.marginLeft='auto';
+      del.onclick = async ()=>{
+        if(!confirm('Delete "'+it.name+'"? This also removes it from all model assignments and any scheduled changes referencing it.')) return;
+        await apiDelete('config_events', 'item_id=eq.'+it.id);
+        await apiDelete('model_items', 'item_id=eq.'+it.id);
+        await apiDelete('config_items', 'id=eq.'+it.id);
+        await loadStaticData();
+        renderItemList();
+        await renderAll();
+      };
+      topLine.appendChild(name); topLine.appendChild(del);
+      row.appendChild(topLine);
+
+      const checks = document.createElement('div'); checks.className='item-model-checks';
+      models.forEach(m=>{
+        const label = document.createElement('label');
+        const cb = document.createElement('input'); cb.type='checkbox';
+        cb.checked = modelItems.some(mi=>mi.model_name===m.name && mi.item_id===it.id);
+        cb.onchange = async ()=>{
+          if(cb.checked){
+            await apiInsert('model_items', {model_name: m.name, item_id: it.id}, false);
+          } else {
+            await apiDelete('model_items', 'model_name=eq.'+encodeURIComponent(m.name)+'&item_id=eq.'+it.id);
+          }
+          await loadStaticData();
+        };
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(m.name));
+        checks.appendChild(label);
+      });
+      if(!models.length){
+        const hint = document.createElement('span'); hint.className='config-empty'; hint.textContent='Add a model above to assign items to it.';
+        checks.appendChild(hint);
+      }
+      row.appendChild(checks);
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('addItemBtn').onclick = async ()=>{
+    const name = document.getElementById('newItemName').value.trim();
+    if(!name) return;
+    await apiInsert('config_items', {name}, false);
+    document.getElementById('newItemName').value = '';
+    await loadStaticData();
+    renderItemList();
+  };
+
+  // ---------- PDF / email ----------
+  function buildPrintArea(weekCount){
+    const printArea = document.getElementById('printArea');
+    printArea.innerHTML = '';
+    const h1 = document.createElement('h1'); h1.textContent = 'Aircraft Configuration Schedule';
+    printArea.appendChild(h1);
+    const sub = document.createElement('div'); sub.style.cssText='font-size:12px;color:#555;margin-bottom:14px;';
+    sub.textContent = 'Printed ' + fmtShort(new Date());
+    printArea.appendChild(sub);
+
+    const win = getWindowDates();
+    for(let i=0;i<weekCount;i++){
+      const wStart = addDays(win.week1Start, i*7);
+      const h2 = document.createElement('h2'); h2.textContent = 'Week of ' + fmtShort(wStart);
+      printArea.appendChild(h2);
+      printArea.appendChild(buildWeekTable(wStart, true));
+    }
+
+    const h2c = document.createElement('h2'); h2c.textContent = 'Current configuration';
+    printArea.appendChild(h2c);
+    const activeAircraft = aircraft.filter(a=>a.active!==false);
+    activeAircraft.forEach(a=>{
+      const line = document.createElement('div'); line.style.cssText='margin-bottom:8px;font-size:12px;';
+      const latestByItem = {};
+      allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
+      const installed = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL').map(id=>itemName(id));
+      line.innerHTML = '<strong>' + a.tail_number + '</strong> (' + a.model + '): ' + (installed.length ? installed.join(', ') : 'no items currently installed');
+      printArea.appendChild(line);
+    });
+  }
+
+  async function preparePrintData(weekCount){
+    const win = getWindowDates();
+    const from = toDateStr(win.week1Start);
+    const to = toDateStr(addDays(win.week1Start, weekCount*7 - 1));
+    const rows = await apiGet('config_events?event_date=gte.'+from+'&event_date=lte.'+to+'&select=*');
+    weekEvents = {};
+    rows.forEach(r=>{
+      const k = r.aircraft_id + '|' + r.event_date;
+      if(!weekEvents[k]) weekEvents[k] = [];
+      weekEvents[k].push(r);
+    });
+    await loadHistoryForCurrentConfig();
+  }
+
+  document.getElementById('pdfBtn').onclick = async ()=>{
+    let weekCount = parseInt(document.getElementById('pdfWeekCount').value, 10);
+    if(!weekCount || weekCount<1) weekCount = 1;
+    if(weekCount>8) weekCount = 8;
+    await preparePrintData(weekCount);
+    buildPrintArea(weekCount);
+    window.print();
+  };
+
+  document.getElementById('emailBtn').onclick = async ()=>{
+    let weekCount = parseInt(document.getElementById('pdfWeekCount').value, 10);
+    if(!weekCount || weekCount<1) weekCount = 1;
+    if(weekCount>8) weekCount = 8;
+    await preparePrintData(weekCount);
+    buildPrintArea(weekCount);
+    window.print();
+    const emailList = prompt('Enter recipient email addresses, separated by commas or semicolons:');
+    if(emailList === null) return;
+    const cleaned = emailList.split(/[,;]/).map(s=>s.trim()).filter(Boolean).join(';');
+    const subject = encodeURIComponent('Aircraft Configuration Schedule');
+    const body = encodeURIComponent('Hi all,\n\nAttached is the aircraft configuration schedule.\n\nThanks.');
+    setTimeout(()=>{
+      window.location.href = 'mailto:?bcc=' + encodeURIComponent(cleaned) + '&subject=' + subject + '&body=' + body;
+    }, 400);
+  };
+
+  // ---------- init ----------
+  async function initAll(){
+    await loadStaticData();
+    await renderAll();
+  }
+
+  initGate();
+})();
+</script>
+</body>
+</html>
