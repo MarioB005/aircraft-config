@@ -187,7 +187,6 @@
       <label>Weeks to include <input type="number" id="pdfWeekCount" min="1" max="8" value="2"></label>
       <button id="pdfBtn" class="primary">Prepare PDF</button>
       <button id="emailBtn">Email schedule to list</button>
-      <button id="textBtn">Text schedule to list</button>
     </div>
   </div>
 
@@ -231,14 +230,12 @@
         <option value="INSTALL">Install</option>
         <option value="REMOVE">Remove</option>
       </select>
-      <button id="addChangeBtn">Add</button>
+      <button id="undoLastChangeBtn">Undo last change</button>
     </div>
-    <div class="sub" style="margin-top:14px;">Notes for this day</div>
+    <div class="sub" style="margin-top:14px;">Notes for this day (saved automatically)</div>
     <textarea id="noteTextarea" placeholder="Additional instructions…"></textarea>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="primary" id="saveNoteBtn">Save note</button>
       <button id="dayModalEmailBtn">Email to list</button>
-      <button id="dayModalTextBtn">Text to list</button>
       <button id="dayModalCloseBtn">Close</button>
     </div>
   </div>
@@ -285,7 +282,6 @@
     <div class="add-row">
       <input id="newRecipientName" placeholder="Name">
       <input id="newRecipientEmail" placeholder="name@company.com">
-      <input id="newRecipientPhone" placeholder="Phone (optional, for texting)">
       <button id="addRecipientBtn">Add</button>
     </div>
     <div class="aircraft-list" id="recipientList"></div>
@@ -617,6 +613,8 @@
 
     renderExistingChanges();
     document.getElementById('noteTextarea').value = dayNotes[aircraftId+'|'+dateStr] || '';
+    document.getElementById('changeActionSelect').value = 'INSTALL';
+    lastAddedChangeId = null;
     dayBackdrop.classList.add('show');
   }
 
@@ -639,6 +637,7 @@
       const del = document.createElement('span'); del.className='del'; del.textContent='Remove';
       del.onclick = async ()=>{
         await apiDelete('config_events', 'id=eq.'+c.id);
+        if(lastAddedChangeId===c.id) lastAddedChangeId = null;
         await loadWeekWindow();
         renderExistingChanges();
         await renderWeeks();
@@ -649,7 +648,9 @@
     });
   }
 
-  document.getElementById('addChangeBtn').onclick = async ()=>{
+  let lastAddedChangeId = null;
+
+  async function attemptAddChange(){
     if(!dayModalCtx) return;
     const itemSel = document.getElementById('changeItemSelect');
     const itemId = itemSel.value;
@@ -660,7 +661,7 @@
     // 1) Don't allow the same item to be scheduled twice on the same aircraft on the same day.
     const sameDayChanges = weekEvents[aircraftId+'|'+dateStr] || [];
     if(sameDayChanges.some(c=>c.item_id===itemId)){
-      alert('This item already has a change scheduled for this aircraft on this day. Remove the existing one first if you need to change it.');
+      alert('This item already has a change scheduled for this aircraft on this day. Use "Undo last change" or remove it from the list below if you need to change it.');
       return;
     }
 
@@ -680,22 +681,38 @@
       return;
     }
 
-    await apiInsert('config_events', {
+    const rows = await apiInsert('config_events', {
       aircraft_id: aircraftId, item_id: itemId, event_date: dateStr, action
-    }, false);
+    }, true);
+    if(rows && rows.length) lastAddedChangeId = rows[0].id;
+
+    await loadWeekWindow();
+    renderExistingChanges();
+    await renderWeeks();
+    await renderCurrentConfig();
+  }
+
+  document.getElementById('changeItemSelect').onchange = attemptAddChange;
+  document.getElementById('changeActionSelect').onchange = attemptAddChange;
+
+  document.getElementById('undoLastChangeBtn').onclick = async ()=>{
+    if(!lastAddedChangeId){ alert('Nothing to undo yet in this session — remove a specific item from the list above instead.'); return; }
+    await apiDelete('config_events', 'id=eq.'+lastAddedChangeId);
+    lastAddedChangeId = null;
     await loadWeekWindow();
     renderExistingChanges();
     await renderWeeks();
     await renderCurrentConfig();
   };
 
-  document.getElementById('saveNoteBtn').onclick = async ()=>{
+  async function saveCurrentNote(){
     if(!dayModalCtx) return;
     const note = document.getElementById('noteTextarea').value.trim();
     await apiUpsert('day_notes', { aircraft_id: dayModalCtx.aircraftId, note_date: dayModalCtx.dateStr, note: note || null });
     await loadWeekWindow();
     await renderWeeks();
-  };
+  }
+  document.getElementById('noteTextarea').addEventListener('blur', saveCurrentNote);
 
   // ---------- week navigation ----------
   document.getElementById('weekPrev').onclick = async ()=>{ weekOffset -= 1; await renderWeeks(); };
@@ -808,7 +825,7 @@
       const row = document.createElement('div'); row.className='aircraft-row';
       const name = document.createElement('span'); name.className='name'; name.textContent = r.name;
       const email = document.createElement('span'); email.className='meta';
-      email.textContent = r.email + (r.phone ? ' — ' + r.phone : '');
+      email.textContent = r.email;
       const del = document.createElement('button'); del.textContent='Remove';
       del.onclick = async ()=>{
         await apiDelete('recipients', 'id=eq.'+r.id);
@@ -823,12 +840,10 @@
   document.getElementById('addRecipientBtn').onclick = async ()=>{
     const name = document.getElementById('newRecipientName').value.trim();
     const email = document.getElementById('newRecipientEmail').value.trim();
-    const phone = document.getElementById('newRecipientPhone').value.trim();
     if(!name || !email){ alert('Enter both a name and an email address.'); return; }
-    await apiInsert('recipients', {name, email, phone: phone || null}, false);
+    await apiInsert('recipients', {name, email}, false);
     document.getElementById('newRecipientName').value = '';
     document.getElementById('newRecipientEmail').value = '';
-    document.getElementById('newRecipientPhone').value = '';
     recipients = await apiGet('recipients?select=*&order=name.asc');
     renderRecipientList();
   };
@@ -1076,24 +1091,9 @@
     window.location.href = 'mailto:?to=' + encodeURIComponent(emails) + '&subject=' + subject + '&body=' + body;
   }
 
-  async function runTextToList(){
-    document.querySelectorAll('.modal-backdrop.show').forEach(el=>el.classList.remove('show'));
-    const weekCount = getWeekCountSetting();
-    await preparePrintData(weekCount);
-    const summary = buildChangeSummaryText(weekCount);
-    const phones = recipients.map(r=>r.phone).filter(Boolean).join(',');
-    if(!phones){
-      alert('No phone numbers saved yet — add some via the gear menu → "Manage recipients" first. Opening a blank text instead.');
-    }
-    const body = encodeURIComponent(summary);
-    window.location.href = 'sms:' + encodeURIComponent(phones) + '?body=' + body;
-  }
-
   document.getElementById('pdfBtn').onclick = runPreparePdf;
   document.getElementById('emailBtn').onclick = runEmailToList;
   document.getElementById('dayModalEmailBtn').onclick = runEmailToList;
-  document.getElementById('textBtn').onclick = runTextToList;
-  document.getElementById('dayModalTextBtn').onclick = runTextToList;
 
   // ---------- init ----------
   async function initAll(){
