@@ -186,7 +186,8 @@
       <span style="flex:1"></span>
       <label>Weeks to include <input type="number" id="pdfWeekCount" min="1" max="8" value="2"></label>
       <button id="pdfBtn" class="primary">Prepare PDF</button>
-      <button id="emailBtn">Print &amp; email schedule</button>
+      <button id="emailBtn">Email schedule to list</button>
+      <button id="textBtn">Text schedule to list</button>
     </div>
   </div>
 
@@ -236,7 +237,8 @@
     <textarea id="noteTextarea" placeholder="Additional instructions…"></textarea>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="primary" id="saveNoteBtn">Save note</button>
-      <button id="dayModalEmailBtn">Print &amp; email to list</button>
+      <button id="dayModalEmailBtn">Email to list</button>
+      <button id="dayModalTextBtn">Text to list</button>
       <button id="dayModalCloseBtn">Close</button>
     </div>
   </div>
@@ -283,6 +285,7 @@
     <div class="add-row">
       <input id="newRecipientName" placeholder="Name">
       <input id="newRecipientEmail" placeholder="name@company.com">
+      <input id="newRecipientPhone" placeholder="Phone (optional, for texting)">
       <button id="addRecipientBtn">Add</button>
     </div>
     <div class="aircraft-list" id="recipientList"></div>
@@ -804,7 +807,8 @@
     recipients.forEach(r=>{
       const row = document.createElement('div'); row.className='aircraft-row';
       const name = document.createElement('span'); name.className='name'; name.textContent = r.name;
-      const email = document.createElement('span'); email.className='meta'; email.textContent = r.email;
+      const email = document.createElement('span'); email.className='meta';
+      email.textContent = r.email + (r.phone ? ' — ' + r.phone : '');
       const del = document.createElement('button'); del.textContent='Remove';
       del.onclick = async ()=>{
         await apiDelete('recipients', 'id=eq.'+r.id);
@@ -819,10 +823,12 @@
   document.getElementById('addRecipientBtn').onclick = async ()=>{
     const name = document.getElementById('newRecipientName').value.trim();
     const email = document.getElementById('newRecipientEmail').value.trim();
+    const phone = document.getElementById('newRecipientPhone').value.trim();
     if(!name || !email){ alert('Enter both a name and an email address.'); return; }
-    await apiInsert('recipients', {name, email}, false);
+    await apiInsert('recipients', {name, email, phone: phone || null}, false);
     document.getElementById('newRecipientName').value = '';
     document.getElementById('newRecipientEmail').value = '';
+    document.getElementById('newRecipientPhone').value = '';
     recipients = await apiGet('recipients?select=*&order=name.asc');
     renderRecipientList();
   };
@@ -1015,22 +1021,79 @@
     window.print();
   }
 
-  async function runPrintAndEmail(){
-    await runPreparePdf();
+  // Builds the same "aircraft with today/future changes" content as the PDF, as plain text.
+  function buildChangeSummaryText(weekCount){
+    const win = getWindowDates();
+    const todayStr = toDateStr(win.today);
+
+    const changedAircraftIds = new Set();
+    Object.keys(weekEvents).forEach(k=>{
+      const [aid, dateStr] = k.split('|');
+      if(weekEvents[k] && weekEvents[k].length && dateStr >= todayStr) changedAircraftIds.add(aid);
+    });
+    const changedAircraft = aircraft.filter(a=>changedAircraftIds.has(a.id));
+
+    if(!changedAircraft.length){
+      return 'No configuration changes are scheduled for any aircraft today or in the future within this date range.';
+    }
+
+    const lines = [];
+    changedAircraft.forEach(a=>{
+      lines.push(a.tail_number + ' (' + a.model + ')');
+      const latestByItem = {};
+      allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
+      const installed = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL').map(id=>itemName(id));
+      lines.push('Current configuration: ' + (installed.length ? installed.join(', ') : 'no items currently installed'));
+      for(let d=0; d<weekCount*7; d++){
+        const dateObj = addDays(win.week1Start, d);
+        const dateStr = toDateStr(dateObj);
+        if(dateStr < todayStr) continue;
+        const key = a.id + '|' + dateStr;
+        const changes = weekEvents[key] || [];
+        const note = dayNotes[key];
+        if(!changes.length && !note) continue;
+        const changeStr = changes.map(c=>(c.action==='INSTALL' ? 'Install ':'Remove ') + itemName(c.item_id)).join(', ');
+        let line = '  ' + DOW[dateObj.getDay()] + ', ' + fmtShort(dateObj) + (changeStr ? ': ' + changeStr : '');
+        if(note) line += (changeStr ? ' — ' : ': ') + 'Note: ' + note;
+        lines.push(line);
+      }
+      lines.push('');
+    });
+    return lines.join('\n');
+  }
+
+  async function runEmailToList(){
+    document.querySelectorAll('.modal-backdrop.show').forEach(el=>el.classList.remove('show'));
+    const weekCount = getWeekCountSetting();
+    await preparePrintData(weekCount);
+    const summary = buildChangeSummaryText(weekCount);
     if(!recipients.length){
       alert('No recipients saved yet — add some via the gear menu → "Manage recipients" first. Opening a blank email instead.');
     }
     const emails = recipients.map(r=>r.email).filter(Boolean).join(';');
     const subject = encodeURIComponent('Aircraft Configuration Changes');
-    const body = encodeURIComponent('Hi all,\n\nAttached is the aircraft configuration change schedule.\n\nThanks.');
-    setTimeout(()=>{
-      window.location.href = 'mailto:?to=' + encodeURIComponent(emails) + '&subject=' + subject + '&body=' + body;
-    }, 400);
+    const body = encodeURIComponent('Hi all,\n\n' + summary + '\nThanks.');
+    window.location.href = 'mailto:?to=' + encodeURIComponent(emails) + '&subject=' + subject + '&body=' + body;
+  }
+
+  async function runTextToList(){
+    document.querySelectorAll('.modal-backdrop.show').forEach(el=>el.classList.remove('show'));
+    const weekCount = getWeekCountSetting();
+    await preparePrintData(weekCount);
+    const summary = buildChangeSummaryText(weekCount);
+    const phones = recipients.map(r=>r.phone).filter(Boolean).join(',');
+    if(!phones){
+      alert('No phone numbers saved yet — add some via the gear menu → "Manage recipients" first. Opening a blank text instead.');
+    }
+    const body = encodeURIComponent(summary);
+    window.location.href = 'sms:' + encodeURIComponent(phones) + '?body=' + body;
   }
 
   document.getElementById('pdfBtn').onclick = runPreparePdf;
-  document.getElementById('emailBtn').onclick = runPrintAndEmail;
-  document.getElementById('dayModalEmailBtn').onclick = runPrintAndEmail;
+  document.getElementById('emailBtn').onclick = runEmailToList;
+  document.getElementById('dayModalEmailBtn').onclick = runEmailToList;
+  document.getElementById('textBtn').onclick = runTextToList;
+  document.getElementById('dayModalTextBtn').onclick = runTextToList;
 
   // ---------- init ----------
   async function initAll(){
