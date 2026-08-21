@@ -1130,23 +1130,53 @@
     renderRecipientList();
   };
 
+  let editingModelId = null;
+
   function renderModelList(){
     const wrap = document.getElementById('modelList');
     wrap.innerHTML = '';
     if(!models.length){ wrap.innerHTML = '<div class="config-empty">No models added yet.</div>'; return; }
     models.forEach(m=>{
       const row = document.createElement('div'); row.className='model-row';
-      const name = document.createElement('span'); name.className='name'; name.textContent = m.name;
-      const del = document.createElement('button'); del.textContent='Delete';
-      del.onclick = async ()=>{
-        if(!confirm('Delete model "'+m.name+'"? Aircraft already using this model will keep the name, but it will no longer be selectable for new aircraft.')) return;
-        await apiDelete('models', 'id=eq.'+m.id);
-        await apiDelete('model_items', 'model_name=eq.'+encodeURIComponent(m.name));
-        await loadStaticData();
-        renderModelList();
-        renderItemList();
-      };
-      row.appendChild(name); row.appendChild(del);
+
+      if(editingModelId === m.id){
+        const nameInput = document.createElement('input');
+        nameInput.value = m.name;
+        nameInput.style.cssText = 'padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;flex:1;';
+        const saveBtn = document.createElement('button'); saveBtn.textContent='Save'; saveBtn.style.color='var(--green)';
+        saveBtn.onclick = async ()=>{
+          const newName = nameInput.value.trim();
+          if(!newName){ alert('Model name can\'t be empty.'); return; }
+          if(newName !== m.name){
+            // model name is used as plain text in aircraft.model and model_items.model_name — update all three together
+            await apiPatch('models', 'id=eq.'+m.id, {name: newName});
+            await apiPatch('aircraft', 'model=eq.'+encodeURIComponent(m.name), {model: newName});
+            await apiPatch('model_items', 'model_name=eq.'+encodeURIComponent(m.name), {model_name: newName});
+          }
+          editingModelId = null;
+          await loadStaticData();
+          renderModelList();
+          renderItemList();
+          await renderAll();
+        };
+        const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel';
+        cancelBtn.onclick = ()=>{ editingModelId = null; renderModelList(); };
+        row.appendChild(nameInput); row.appendChild(saveBtn); row.appendChild(cancelBtn);
+      } else {
+        const name = document.createElement('span'); name.className='name'; name.textContent = m.name;
+        const edit = document.createElement('button'); edit.textContent='Edit'; edit.style.color='var(--accent)';
+        edit.onclick = ()=>{ editingModelId = m.id; renderModelList(); };
+        const del = document.createElement('button'); del.textContent='Delete';
+        del.onclick = async ()=>{
+          if(!confirm('Delete model "'+m.name+'"? Aircraft already using this model will keep the name, but it will no longer be selectable for new aircraft.')) return;
+          await apiDelete('models', 'id=eq.'+m.id);
+          await apiDelete('model_items', 'model_name=eq.'+encodeURIComponent(m.name));
+          await loadStaticData();
+          renderModelList();
+          renderItemList();
+        };
+        row.appendChild(name); row.appendChild(edit); row.appendChild(del);
+      }
       wrap.appendChild(row);
     });
   }
