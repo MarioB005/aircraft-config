@@ -188,6 +188,11 @@
     </div>
   </div>
 
+  <div class="panel">
+    <h2>Current configuration</h2>
+    <div class="config-grid" id="configGrid"></div>
+  </div>
+
   <div class="week-nav">
     <button id="weekPrev">‹</button>
     <button class="today-btn" id="weekTodayBtn">This week</button>
@@ -202,11 +207,6 @@
   <div class="panel" style="overflow-x:auto;">
     <h2 id="week2Title">Week of …</h2>
     <div id="week2Wrap"></div>
-  </div>
-
-  <div class="panel">
-    <h2>Current configuration</h2>
-    <div class="config-grid" id="configGrid"></div>
   </div>
 
   <div class="note">
@@ -925,16 +925,19 @@
     sub.textContent = fmtShort(win.week1Start) + ' – ' + fmtShort(rangeEnd) + '   |   Printed ' + fmtShort(new Date());
     printArea.appendChild(sub);
 
-    // Only aircraft with at least one change in the selected range
+    const todayStr = toDateStr(win.today);
+
+    // Only aircraft with at least one change today or in the future — past changes are corrections, not upcoming work
     const changedAircraftIds = new Set();
     Object.keys(weekEvents).forEach(k=>{
-      if(weekEvents[k] && weekEvents[k].length) changedAircraftIds.add(k.split('|')[0]);
+      const [aid, dateStr] = k.split('|');
+      if(weekEvents[k] && weekEvents[k].length && dateStr >= todayStr) changedAircraftIds.add(aid);
     });
     const changedAircraft = aircraft.filter(a=>changedAircraftIds.has(a.id));
 
     if(!changedAircraft.length){
       const none = document.createElement('div'); none.style.cssText='font-size:13px;color:#555;';
-      none.textContent = 'No configuration changes are scheduled for any aircraft in this date range.';
+      none.textContent = 'No configuration changes are scheduled for any aircraft today or in the future within this date range.';
       printArea.appendChild(none);
       return;
     }
@@ -952,13 +955,14 @@
       curLine.innerHTML = '<strong>Current configuration:</strong> ' + (installed.length ? installed.join(', ') : 'no items currently installed');
       printArea.appendChild(curLine);
 
-      // Changes within range, day by day
+      // Changes today or in the future only, day by day — past changes are corrections and don't show
       const table = document.createElement('table');
       table.innerHTML = '<thead><tr><th>Date</th><th>Change</th></tr></thead>';
       const tbody = document.createElement('tbody');
       for(let d=0; d<weekCount*7; d++){
         const dateObj = addDays(win.week1Start, d);
         const dateStr = toDateStr(dateObj);
+        if(dateStr < todayStr) continue;
         const key = a.id + '|' + dateStr;
         const changes = weekEvents[key] || [];
         const note = dayNotes[key];
@@ -1018,7 +1022,7 @@
     const subject = encodeURIComponent('Aircraft Configuration Changes');
     const body = encodeURIComponent('Hi all,\n\nAttached is the aircraft configuration change schedule.\n\nThanks.');
     setTimeout(()=>{
-      window.location.href = 'mailto:?bcc=' + encodeURIComponent(emails) + '&subject=' + subject + '&body=' + body;
+      window.location.href = 'mailto:?to=' + encodeURIComponent(emails) + '&subject=' + subject + '&body=' + body;
     }, 400);
   }
 
