@@ -50,6 +50,13 @@
   }
   .db-dropdown button:last-child{border-bottom:none;}
   .db-dropdown button:hover{background:var(--paper);}
+  .db-dropdown-row{
+    display:flex; flex-direction:column; gap:5px; padding:11px 16px; font-size:12px; min-width:180px;
+  }
+  .db-dropdown-row label{color:var(--grey-strong); font-weight:600;}
+  .db-dropdown-row select{
+    padding:6px 8px; border:1px solid var(--line); border-radius:7px; font-size:12.5px; background:var(--panel); color:var(--ink);
+  }
 
   .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 20px 0;}
   .toolbar button{
@@ -178,6 +185,17 @@
           <button id="openItemsBtn">Manage items &amp; models</button>
           <button id="openRecipientsBtn">Manage recipients</button>
           <button id="changePassBtn">Change password</button>
+          <div class="db-dropdown-row">
+            <label for="sessionTimeoutSelect">Auto-lock after</label>
+            <select id="sessionTimeoutSelect">
+              <option value="0">Never</option>
+              <option value="5">5 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="240">4 hours</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -381,6 +399,7 @@
       gate.classList.add('hidden');
       app.style.display = 'block';
       initAll();
+      initAutoLock();
     }
     btn.onclick = async ()=>{
       err.textContent = '';
@@ -728,6 +747,45 @@
       gearDropdown.classList.remove('show');
     }
   });
+
+  // ---------- auto-lock after inactivity ----------
+  let sessionTimeoutMinutes = 30;
+  let inactivityTimer = null;
+
+  function lockApp(){
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('gate').classList.remove('hidden');
+    document.getElementById('gatePass').value = '';
+    initGate();
+  }
+
+  function resetInactivityTimer(){
+    if(inactivityTimer) clearTimeout(inactivityTimer);
+    if(sessionTimeoutMinutes > 0){
+      inactivityTimer = setTimeout(lockApp, sessionTimeoutMinutes * 60 * 1000);
+    }
+  }
+
+  ['mousemove','keydown','mousedown','scroll','touchstart'].forEach(evt=>{
+    document.addEventListener(evt, ()=>{ if(document.getElementById('app').style.display !== 'none') resetInactivityTimer(); }, {passive:true});
+  });
+
+  document.getElementById('sessionTimeoutSelect').onchange = async (e)=>{
+    sessionTimeoutMinutes = parseInt(e.target.value, 10);
+    await setSetting('sessionTimeoutMinutes', String(sessionTimeoutMinutes));
+    resetInactivityTimer();
+  };
+
+  async function initAutoLock(){
+    try{
+      const raw = await getSetting('sessionTimeoutMinutes');
+      sessionTimeoutMinutes = raw !== null ? parseInt(raw, 10) : 30;
+    }catch(e){
+      sessionTimeoutMinutes = 30;
+    }
+    document.getElementById('sessionTimeoutSelect').value = String(sessionTimeoutMinutes);
+    resetInactivityTimer();
+  }
 
   // ---------- aircraft management ----------
   const aircraftBackdrop = document.getElementById('aircraftModalBackdrop');
