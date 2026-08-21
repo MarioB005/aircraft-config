@@ -122,6 +122,9 @@
     border:none;background:none;color:var(--red);cursor:pointer;font-size:12px;
   }
   .aircraft-row button.edit, .item-row button.edit{color:var(--accent);}
+  .order-btns{display:flex;flex-direction:column;gap:1px;margin-right:2px;}
+  .order-btns button{color:var(--ink);font-size:11px;line-height:1;padding:1px 4px;border:1px solid var(--line);border-radius:4px;background:var(--panel);}
+  .order-btns button:disabled{opacity:.3;cursor:default;}
   .add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;}
   .add-row input, .add-row select{padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;}
   .add-row button{padding:8px 14px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-size:13px;}
@@ -489,7 +492,7 @@
   async function loadStaticData(){
     aircraft = await apiGet('aircraft?select=*&order=tail_number.asc');
     models = await apiGet('models?select=*&order=name.asc');
-    items = await apiGet('config_items?select=*&order=name.asc');
+    items = await apiGet('config_items?select=*&order=sort_order.asc,name.asc');
     modelItems = await apiGet('model_items?select=*');
     recipients = await apiGet('recipients?select=*&order=name.asc');
   }
@@ -634,7 +637,7 @@
 
       const latestByItem = {};
       allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
-      const installedIds = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL');
+      const installedIds = items.filter(it=>latestByItem[it.id]==='INSTALL').map(it=>it.id);
       if(!installedIds.length){
         const empty = document.createElement('div'); empty.className='config-empty'; empty.textContent='No items currently installed.';
         card.appendChild(empty);
@@ -802,7 +805,7 @@
     wrap.innerHTML = '';
     const latestByItem = {};
     allHistoryEvents.filter(e=>e.aircraft_id===aircraftId).forEach(e=>{ latestByItem[e.item_id] = e.action; });
-    const installedIds = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL');
+    const installedIds = items.filter(it=>latestByItem[it.id]==='INSTALL').map(it=>it.id);
     if(!installedIds.length){
       const none = document.createElement('span'); none.className = 'config-empty'; none.textContent = 'Nothing currently installed.';
       wrap.appendChild(none);
@@ -1131,9 +1134,19 @@
     const wrap = document.getElementById('itemList');
     wrap.innerHTML = '';
     if(!items.length){ wrap.innerHTML = '<div class="config-empty">No items added yet.</div>'; return; }
-    items.forEach(it=>{
+    items.forEach((it, idx)=>{
       const row = document.createElement('div'); row.className='item-row'; row.style.flexDirection='column'; row.style.alignItems='stretch';
       const topLine = document.createElement('div'); topLine.style.cssText='display:flex;align-items:center;gap:10px;';
+
+      const orderBtns = document.createElement('div'); orderBtns.className='order-btns';
+      const up = document.createElement('button'); up.textContent='▲'; up.title='Move up';
+      up.disabled = idx===0;
+      up.onclick = ()=> moveItem(idx, -1);
+      const down = document.createElement('button'); down.textContent='▼'; down.title='Move down';
+      down.disabled = idx===items.length-1;
+      down.onclick = ()=> moveItem(idx, 1);
+      orderBtns.appendChild(up); orderBtns.appendChild(down);
+
       const name = document.createElement('span'); name.className='name'; name.textContent = it.name;
       const del = document.createElement('button'); del.textContent='Delete item'; del.style.marginLeft='auto';
       del.onclick = async ()=>{
@@ -1145,7 +1158,7 @@
         renderItemList();
         await renderAll();
       };
-      topLine.appendChild(name); topLine.appendChild(del);
+      topLine.appendChild(orderBtns); topLine.appendChild(name); topLine.appendChild(del);
       row.appendChild(topLine);
 
       const checks = document.createElement('div'); checks.className='item-model-checks';
@@ -1174,10 +1187,22 @@
     });
   }
 
+  async function moveItem(idx, dir){
+    const newIdx = idx + dir;
+    if(newIdx<0 || newIdx>=items.length) return;
+    const arr = items.slice();
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    // re-persist a full, unambiguous sequential order based on the new arrangement
+    await Promise.all(arr.map((it, i) => apiPatch('config_items', 'id=eq.'+it.id, {sort_order: i})));
+    await loadStaticData();
+    renderItemList();
+    await renderAll();
+  }
+
   document.getElementById('addItemBtn').onclick = async ()=>{
     const name = document.getElementById('newItemName').value.trim();
     if(!name) return;
-    await apiInsert('config_items', {name}, false);
+    await apiInsert('config_items', {name, sort_order: items.length}, false);
     document.getElementById('newItemName').value = '';
     await loadStaticData();
     renderItemList();
@@ -1220,7 +1245,7 @@
       // Current configuration
       const latestByItem = {};
       allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
-      const installed = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL').map(id=>itemName(id));
+      const installed = items.filter(it=>latestByItem[it.id]==='INSTALL').map(it=>it.name);
       const curLine = document.createElement('div'); curLine.style.cssText='font-size:16px;margin-bottom:8px;';
       curLine.innerHTML = '<strong>Current configuration:</strong> ' + (installed.length ? installed.join(', ') : 'no items currently installed');
       printArea.appendChild(curLine);
@@ -1305,7 +1330,7 @@
       lines.push(a.tail_number + ' (' + a.model + ')');
       const latestByItem = {};
       allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
-      const installed = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL').map(id=>itemName(id));
+      const installed = items.filter(it=>latestByItem[it.id]==='INSTALL').map(it=>it.name);
       lines.push('Current configuration: ' + (installed.length ? installed.join(', ') : 'no items currently installed'));
       for(let d=0; d<weekCount*7; d++){
         const dateObj = addDays(win.week1Start, d);
