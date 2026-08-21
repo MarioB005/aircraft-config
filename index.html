@@ -132,9 +132,11 @@
   @media print{
     #gate, #app{display:none !important;}
     #printArea{display:block !important;}
-    #printArea table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px;}
-    #printArea th, #printArea td{border:1.5px solid #000 !important;padding:4px;}
-    #printArea th{background:#e9eef2 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    #printArea h1{font-size:26px;}
+    #printArea h2{font-size:19px;}
+    #printArea table{width:100%;border-collapse:collapse;font-size:15px;margin-bottom:18px;}
+    #printArea th, #printArea td{border:1.5px solid #000 !important;padding:6px;}
+    #printArea th{background:#e9eef2 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:14px;}
     * {-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
   }
 
@@ -234,7 +236,6 @@
     <textarea id="noteTextarea" placeholder="Additional instructions…"></textarea>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="primary" id="saveNoteBtn">Save note</button>
-      <button id="dayModalPdfBtn">Prepare PDF</button>
       <button id="dayModalEmailBtn">Print &amp; email to list</button>
       <button id="dayModalCloseBtn">Close</button>
     </div>
@@ -921,7 +922,7 @@
     printArea.appendChild(h1);
     const win = getWindowDates();
     const rangeEnd = addDays(win.week1Start, weekCount*7 - 1);
-    const sub = document.createElement('div'); sub.style.cssText='font-size:12px;color:#555;margin-bottom:18px;';
+    const sub = document.createElement('div'); sub.style.cssText='font-size:15px;color:#555;margin-bottom:18px;';
     sub.textContent = fmtShort(win.week1Start) + ' – ' + fmtShort(rangeEnd) + '   |   Printed ' + fmtShort(new Date());
     printArea.appendChild(sub);
 
@@ -936,7 +937,7 @@
     const changedAircraft = aircraft.filter(a=>changedAircraftIds.has(a.id));
 
     if(!changedAircraft.length){
-      const none = document.createElement('div'); none.style.cssText='font-size:13px;color:#555;';
+      const none = document.createElement('div'); none.style.cssText='font-size:16px;color:#555;';
       none.textContent = 'No configuration changes are scheduled for any aircraft today or in the future within this date range.';
       printArea.appendChild(none);
       return;
@@ -951,7 +952,7 @@
       const latestByItem = {};
       allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
       const installed = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL').map(id=>itemName(id));
-      const curLine = document.createElement('div'); curLine.style.cssText='font-size:12.5px;margin-bottom:8px;';
+      const curLine = document.createElement('div'); curLine.style.cssText='font-size:16px;margin-bottom:8px;';
       curLine.innerHTML = '<strong>Current configuration:</strong> ' + (installed.length ? installed.join(', ') : 'no items currently installed');
       printArea.appendChild(curLine);
 
@@ -1028,7 +1029,6 @@
 
   document.getElementById('pdfBtn').onclick = runPreparePdf;
   document.getElementById('emailBtn').onclick = runPrintAndEmail;
-  document.getElementById('dayModalPdfBtn').onclick = runPreparePdf;
   document.getElementById('dayModalEmailBtn').onclick = runPrintAndEmail;
 
   // ---------- init ----------
