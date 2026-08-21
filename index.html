@@ -1003,6 +1003,8 @@
     });
   }
 
+  let editingAircraftId = null;
+
   function renderAircraftList(){
     const wrap = document.getElementById('aircraftList');
     wrap.innerHTML = '';
@@ -1012,27 +1014,56 @@
     }
     aircraft.forEach(a=>{
       const row = document.createElement('div'); row.className='aircraft-row';
-      const name = document.createElement('span'); name.className='name'; name.textContent = a.tail_number;
-      const meta = document.createElement('span'); meta.className='meta'; meta.textContent = a.model + (a.active===false ? ' (inactive)':'');
-      const toggle = document.createElement('button'); toggle.className='edit';
-      toggle.textContent = a.active===false ? 'Reactivate' : 'Deactivate';
-      toggle.onclick = async ()=>{
-        await apiPatch('aircraft', 'id=eq.'+a.id, {active: a.active===false});
-        await loadStaticData();
-        renderAircraftList();
-        await renderAll();
-      };
-      const del = document.createElement('button'); del.textContent='Delete';
-      del.onclick = async ()=>{
-        if(!confirm('Delete '+a.tail_number+'? This also deletes all its scheduled changes and notes. This cannot be undone.')) return;
-        await apiDelete('config_events', 'aircraft_id=eq.'+a.id);
-        await apiDelete('day_notes', 'aircraft_id=eq.'+a.id);
-        await apiDelete('aircraft', 'id=eq.'+a.id);
-        await loadStaticData();
-        renderAircraftList();
-        await renderAll();
-      };
-      row.appendChild(name); row.appendChild(meta); row.appendChild(toggle); row.appendChild(del);
+
+      if(editingAircraftId === a.id){
+        const tailInput = document.createElement('input');
+        tailInput.value = a.tail_number;
+        tailInput.style.cssText = 'padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;width:110px;';
+        const modelSelect = document.createElement('select');
+        modelSelect.style.cssText = 'padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;';
+        models.forEach(m=>{
+          const opt = document.createElement('option'); opt.value = m.name; opt.textContent = m.name;
+          if(m.name === a.model) opt.selected = true;
+          modelSelect.appendChild(opt);
+        });
+        const saveBtn = document.createElement('button'); saveBtn.textContent='Save'; saveBtn.style.color='var(--green)';
+        saveBtn.onclick = async ()=>{
+          const newTail = tailInput.value.trim();
+          if(!newTail){ alert('Registration number can\'t be empty.'); return; }
+          await apiPatch('aircraft', 'id=eq.'+a.id, {tail_number: newTail, model: modelSelect.value});
+          editingAircraftId = null;
+          await loadStaticData();
+          renderAircraftList();
+          await renderAll();
+        };
+        const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel';
+        cancelBtn.onclick = ()=>{ editingAircraftId = null; renderAircraftList(); };
+        row.appendChild(tailInput); row.appendChild(modelSelect); row.appendChild(saveBtn); row.appendChild(cancelBtn);
+      } else {
+        const name = document.createElement('span'); name.className='name'; name.textContent = a.tail_number;
+        const meta = document.createElement('span'); meta.className='meta'; meta.textContent = a.model + (a.active===false ? ' (inactive)':'');
+        const edit = document.createElement('button'); edit.textContent='Edit'; edit.style.color='var(--accent)';
+        edit.onclick = ()=>{ editingAircraftId = a.id; renderAircraftList(); };
+        const toggle = document.createElement('button'); toggle.className='edit';
+        toggle.textContent = a.active===false ? 'Reactivate' : 'Deactivate';
+        toggle.onclick = async ()=>{
+          await apiPatch('aircraft', 'id=eq.'+a.id, {active: a.active===false});
+          await loadStaticData();
+          renderAircraftList();
+          await renderAll();
+        };
+        const del = document.createElement('button'); del.textContent='Delete';
+        del.onclick = async ()=>{
+          if(!confirm('Delete '+a.tail_number+'? This also deletes all its scheduled changes and notes. This cannot be undone.')) return;
+          await apiDelete('config_events', 'aircraft_id=eq.'+a.id);
+          await apiDelete('day_notes', 'aircraft_id=eq.'+a.id);
+          await apiDelete('aircraft', 'id=eq.'+a.id);
+          await loadStaticData();
+          renderAircraftList();
+          await renderAll();
+        };
+        row.appendChild(name); row.appendChild(meta); row.appendChild(edit); row.appendChild(toggle); row.appendChild(del);
+      }
       wrap.appendChild(row);
     });
   }
