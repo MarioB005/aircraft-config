@@ -252,6 +252,8 @@
     <h3><span id="dayModalTitle">Aircraft — Date</span><button class="close-x" id="dayModalClose">×</button></h3>
     <div class="sub">Configuration changes for this day</div>
     <div id="existingChanges"></div>
+    <div class="sub" style="margin-top:12px;">Currently installed on this aircraft (click to schedule removal on this day)</div>
+    <div id="installedChipsWrap" style="margin:6px 0 4px;"></div>
     <div class="add-change-row">
       <select id="changeItemSelect"></select>
       <select id="changeActionSelect">
@@ -788,10 +790,35 @@
     }
 
     renderExistingChanges();
+    renderInstalledChipsInModal(aircraftId);
     document.getElementById('noteTextarea').value = dayNotes[aircraftId+'|'+dateStr] || '';
     document.getElementById('changeActionSelect').value = 'INSTALL';
     lastAddedChangeId = null;
     dayBackdrop.classList.add('show');
+  }
+
+  function renderInstalledChipsInModal(aircraftId){
+    const wrap = document.getElementById('installedChipsWrap');
+    wrap.innerHTML = '';
+    const latestByItem = {};
+    allHistoryEvents.filter(e=>e.aircraft_id===aircraftId).forEach(e=>{ latestByItem[e.item_id] = e.action; });
+    const installedIds = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL');
+    if(!installedIds.length){
+      const none = document.createElement('span'); none.className = 'config-empty'; none.textContent = 'Nothing currently installed.';
+      wrap.appendChild(none);
+      return;
+    }
+    installedIds.forEach(id=>{
+      const chip = document.createElement('span'); chip.className = 'config-chip';
+      chip.textContent = itemName(id);
+      chip.title = 'Click to schedule removal on this day';
+      chip.onclick = ()=>{
+        document.getElementById('changeItemSelect').value = id;
+        document.getElementById('changeActionSelect').value = 'REMOVE';
+        attemptAddChange();
+      };
+      wrap.appendChild(chip);
+    });
   }
 
   function renderExistingChanges(){
@@ -816,6 +843,7 @@
         if(lastAddedChangeId===c.id) lastAddedChangeId = null;
         await loadWeekWindow();
         renderExistingChanges();
+        if(dayModalCtx) renderInstalledChipsInModal(dayModalCtx.aircraftId);
         await renderWeeks();
         await renderCurrentConfig();
         await findAndRenderDiscrepancies();
@@ -865,6 +893,7 @@
 
     await loadWeekWindow();
     renderExistingChanges();
+    if(dayModalCtx) renderInstalledChipsInModal(dayModalCtx.aircraftId);
     await renderWeeks();
     await renderCurrentConfig();
     await findAndRenderDiscrepancies();
@@ -879,6 +908,7 @@
     lastAddedChangeId = null;
     await loadWeekWindow();
     renderExistingChanges();
+    if(dayModalCtx) renderInstalledChipsInModal(dayModalCtx.aircraftId);
     await renderWeeks();
     await renderCurrentConfig();
     await findAndRenderDiscrepancies();
