@@ -174,6 +174,7 @@
         <div class="db-dropdown" id="gearDropdown">
           <button id="openAircraftBtn">Manage aircraft</button>
           <button id="openItemsBtn">Manage items &amp; models</button>
+          <button id="openRecipientsBtn">Manage recipients</button>
           <button id="changePassBtn">Change password</button>
         </div>
       </div>
@@ -231,8 +232,10 @@
     </div>
     <div class="sub" style="margin-top:14px;">Notes for this day</div>
     <textarea id="noteTextarea" placeholder="Additional instructions…"></textarea>
-    <div style="margin-top:12px;display:flex;gap:8px;">
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="primary" id="saveNoteBtn">Save note</button>
+      <button id="dayModalPdfBtn">Prepare PDF</button>
+      <button id="dayModalEmailBtn">Print &amp; email to list</button>
       <button id="dayModalCloseBtn">Close</button>
     </div>
   </div>
@@ -269,6 +272,19 @@
       <button id="addItemBtn">Add item</button>
     </div>
     <div class="item-list" id="itemList"></div>
+  </div>
+</div>
+
+<!-- Recipients management modal -->
+<div class="modal-backdrop" id="recipientsModalBackdrop">
+  <div class="modal">
+    <h3>Manage recipients<button class="close-x" id="recipientsModalClose">×</button></h3>
+    <div class="add-row">
+      <input id="newRecipientName" placeholder="Name">
+      <input id="newRecipientEmail" placeholder="name@company.com">
+      <button id="addRecipientBtn">Add</button>
+    </div>
+    <div class="aircraft-list" id="recipientList"></div>
   </div>
 </div>
 
@@ -402,6 +418,7 @@
   let models = [];
   let items = [];
   let modelItems = []; // {model_name, item_id}
+  let recipients = []; // {id, name, email}
   let weekEvents = {}; // "aircraftId|date" -> [{id,item_id,action}]
   let dayNotes = {};   // "aircraftId|date" -> note text
   let allHistoryEvents = []; // full history up to today, for current-config computation
@@ -427,6 +444,7 @@
     models = await apiGet('models?select=*&order=name.asc');
     items = await apiGet('config_items?select=*&order=name.asc');
     modelItems = await apiGet('model_items?select=*');
+    recipients = await apiGet('recipients?select=*&order=name.asc');
   }
 
   async function loadWeekWindow(){
@@ -633,8 +651,33 @@
     const itemId = itemSel.value;
     if(!itemId){ alert('Set up items for this model first (gear menu → Manage items & models).'); return; }
     const action = document.getElementById('changeActionSelect').value;
+    const {aircraftId, dateStr} = dayModalCtx;
+
+    // 1) Don't allow the same item to be scheduled twice on the same aircraft on the same day.
+    const sameDayChanges = weekEvents[aircraftId+'|'+dateStr] || [];
+    if(sameDayChanges.some(c=>c.item_id===itemId)){
+      alert('This item already has a change scheduled for this aircraft on this day. Remove the existing one first if you need to change it.');
+      return;
+    }
+
+    // 2) Check the most recent prior event for this aircraft+item to make sure the requested
+    //    action is actually possible (can't install what's already installed, can't remove what isn't).
+    const priorRows = await apiGet(
+      'config_events?aircraft_id=eq.'+aircraftId+'&item_id=eq.'+itemId+
+      '&event_date=lt.'+dateStr+'&select=*&order=event_date.desc&limit=1'
+    );
+    const priorAction = priorRows.length ? priorRows[0].action : null;
+    if(action==='INSTALL' && priorAction==='INSTALL'){
+      alert('This item is already installed on this aircraft (as of the most recent prior change). It must be removed before it can be installed again.');
+      return;
+    }
+    if(action==='REMOVE' && priorAction!=='INSTALL'){
+      alert('This item isn\'t currently installed on this aircraft, so it can\'t be removed.');
+      return;
+    }
+
     await apiInsert('config_events', {
-      aircraft_id: dayModalCtx.aircraftId, item_id: itemId, event_date: dayModalCtx.dateStr, action
+      aircraft_id: aircraftId, item_id: itemId, event_date: dateStr, action
     }, false);
     await loadWeekWindow();
     renderExistingChanges();
@@ -744,6 +787,45 @@
   };
   document.getElementById('itemsModalClose').onclick = ()=> itemsBackdrop.classList.remove('show');
 
+  // ---------- recipients management ----------
+  const recipientsBackdrop = document.getElementById('recipientsModalBackdrop');
+  document.getElementById('openRecipientsBtn').onclick = ()=>{
+    gearDropdown.classList.remove('show');
+    renderRecipientList();
+    recipientsBackdrop.classList.add('show');
+  };
+  document.getElementById('recipientsModalClose').onclick = ()=> recipientsBackdrop.classList.remove('show');
+
+  function renderRecipientList(){
+    const wrap = document.getElementById('recipientList');
+    wrap.innerHTML = '';
+    if(!recipients.length){ wrap.innerHTML = '<div class="config-empty">No recipients added yet.</div>'; return; }
+    recipients.forEach(r=>{
+      const row = document.createElement('div'); row.className='aircraft-row';
+      const name = document.createElement('span'); name.className='name'; name.textContent = r.name;
+      const email = document.createElement('span'); email.className='meta'; email.textContent = r.email;
+      const del = document.createElement('button'); del.textContent='Remove';
+      del.onclick = async ()=>{
+        await apiDelete('recipients', 'id=eq.'+r.id);
+        recipients = await apiGet('recipients?select=*&order=name.asc');
+        renderRecipientList();
+      };
+      row.appendChild(name); row.appendChild(email); row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('addRecipientBtn').onclick = async ()=>{
+    const name = document.getElementById('newRecipientName').value.trim();
+    const email = document.getElementById('newRecipientEmail').value.trim();
+    if(!name || !email){ alert('Enter both a name and an email address.'); return; }
+    await apiInsert('recipients', {name, email}, false);
+    document.getElementById('newRecipientName').value = '';
+    document.getElementById('newRecipientEmail').value = '';
+    recipients = await apiGet('recipients?select=*&order=name.asc');
+    renderRecipientList();
+  };
+
   function renderModelList(){
     const wrap = document.getElementById('modelList');
     wrap.innerHTML = '';
@@ -835,30 +917,64 @@
   function buildPrintArea(weekCount){
     const printArea = document.getElementById('printArea');
     printArea.innerHTML = '';
-    const h1 = document.createElement('h1'); h1.textContent = 'Aircraft Configuration Schedule';
+    const h1 = document.createElement('h1'); h1.textContent = 'Aircraft Configuration Changes';
     printArea.appendChild(h1);
-    const sub = document.createElement('div'); sub.style.cssText='font-size:12px;color:#555;margin-bottom:14px;';
-    sub.textContent = 'Printed ' + fmtShort(new Date());
+    const win = getWindowDates();
+    const rangeEnd = addDays(win.week1Start, weekCount*7 - 1);
+    const sub = document.createElement('div'); sub.style.cssText='font-size:12px;color:#555;margin-bottom:18px;';
+    sub.textContent = fmtShort(win.week1Start) + ' – ' + fmtShort(rangeEnd) + '   |   Printed ' + fmtShort(new Date());
     printArea.appendChild(sub);
 
-    const win = getWindowDates();
-    for(let i=0;i<weekCount;i++){
-      const wStart = addDays(win.week1Start, i*7);
-      const h2 = document.createElement('h2'); h2.textContent = 'Week of ' + fmtShort(wStart);
-      printArea.appendChild(h2);
-      printArea.appendChild(buildWeekTable(wStart, true));
+    // Only aircraft with at least one change in the selected range
+    const changedAircraftIds = new Set();
+    Object.keys(weekEvents).forEach(k=>{
+      if(weekEvents[k] && weekEvents[k].length) changedAircraftIds.add(k.split('|')[0]);
+    });
+    const changedAircraft = aircraft.filter(a=>changedAircraftIds.has(a.id));
+
+    if(!changedAircraft.length){
+      const none = document.createElement('div'); none.style.cssText='font-size:13px;color:#555;';
+      none.textContent = 'No configuration changes are scheduled for any aircraft in this date range.';
+      printArea.appendChild(none);
+      return;
     }
 
-    const h2c = document.createElement('h2'); h2c.textContent = 'Current configuration';
-    printArea.appendChild(h2c);
-    const activeAircraft = aircraft.filter(a=>a.active!==false);
-    activeAircraft.forEach(a=>{
-      const line = document.createElement('div'); line.style.cssText='margin-bottom:8px;font-size:12px;';
+    changedAircraft.forEach(a=>{
+      const h2 = document.createElement('h2'); h2.style.cssText='margin-top:22px;margin-bottom:6px;';
+      h2.textContent = a.tail_number + ' (' + a.model + ')';
+      printArea.appendChild(h2);
+
+      // Current configuration
       const latestByItem = {};
       allHistoryEvents.filter(e=>e.aircraft_id===a.id).forEach(e=>{ latestByItem[e.item_id] = e.action; });
       const installed = Object.keys(latestByItem).filter(id=>latestByItem[id]==='INSTALL').map(id=>itemName(id));
-      line.innerHTML = '<strong>' + a.tail_number + '</strong> (' + a.model + '): ' + (installed.length ? installed.join(', ') : 'no items currently installed');
-      printArea.appendChild(line);
+      const curLine = document.createElement('div'); curLine.style.cssText='font-size:12.5px;margin-bottom:8px;';
+      curLine.innerHTML = '<strong>Current configuration:</strong> ' + (installed.length ? installed.join(', ') : 'no items currently installed');
+      printArea.appendChild(curLine);
+
+      // Changes within range, day by day
+      const table = document.createElement('table');
+      table.innerHTML = '<thead><tr><th>Date</th><th>Change</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+      for(let d=0; d<weekCount*7; d++){
+        const dateObj = addDays(win.week1Start, d);
+        const dateStr = toDateStr(dateObj);
+        const key = a.id + '|' + dateStr;
+        const changes = weekEvents[key] || [];
+        const note = dayNotes[key];
+        if(!changes.length && !note) continue;
+        const tr = document.createElement('tr');
+        const dateTd = document.createElement('td'); dateTd.style.textAlign='left'; dateTd.style.whiteSpace='nowrap';
+        dateTd.textContent = DOW[dateObj.getDay()] + ', ' + fmtShort(dateObj);
+        const changeTd = document.createElement('td'); changeTd.style.textAlign='left';
+        let html = changes.map(c=>(c.action==='INSTALL' ? '➕ Install ':'➖ Remove ') + itemName(c.item_id)).join('<br>');
+        if(note) html += (html ? '<br>':'') + '<em>Note: ' + note + '</em>';
+        changeTd.innerHTML = html;
+        tr.appendChild(dateTd); tr.appendChild(changeTd);
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      printArea.appendChild(table);
     });
   }
 
@@ -873,34 +989,43 @@
       if(!weekEvents[k]) weekEvents[k] = [];
       weekEvents[k].push(r);
     });
+    const noteRows = await apiGet('day_notes?note_date=gte.'+from+'&note_date=lte.'+to+'&select=*');
+    dayNotes = {};
+    noteRows.forEach(r=>{ dayNotes[r.aircraft_id+'|'+r.note_date] = r.note; });
     await loadHistoryForCurrentConfig();
   }
 
-  document.getElementById('pdfBtn').onclick = async ()=>{
+  function getWeekCountSetting(){
     let weekCount = parseInt(document.getElementById('pdfWeekCount').value, 10);
     if(!weekCount || weekCount<1) weekCount = 1;
     if(weekCount>8) weekCount = 8;
-    await preparePrintData(weekCount);
-    buildPrintArea(weekCount);
-    window.print();
-  };
+    return weekCount;
+  }
 
-  document.getElementById('emailBtn').onclick = async ()=>{
-    let weekCount = parseInt(document.getElementById('pdfWeekCount').value, 10);
-    if(!weekCount || weekCount<1) weekCount = 1;
-    if(weekCount>8) weekCount = 8;
+  async function runPreparePdf(){
+    const weekCount = getWeekCountSetting();
     await preparePrintData(weekCount);
     buildPrintArea(weekCount);
     window.print();
-    const emailList = prompt('Enter recipient email addresses, separated by commas or semicolons:');
-    if(emailList === null) return;
-    const cleaned = emailList.split(/[,;]/).map(s=>s.trim()).filter(Boolean).join(';');
-    const subject = encodeURIComponent('Aircraft Configuration Schedule');
-    const body = encodeURIComponent('Hi all,\n\nAttached is the aircraft configuration schedule.\n\nThanks.');
+  }
+
+  async function runPrintAndEmail(){
+    await runPreparePdf();
+    if(!recipients.length){
+      alert('No recipients saved yet — add some via the gear menu → "Manage recipients" first. Opening a blank email instead.');
+    }
+    const emails = recipients.map(r=>r.email).filter(Boolean).join(';');
+    const subject = encodeURIComponent('Aircraft Configuration Changes');
+    const body = encodeURIComponent('Hi all,\n\nAttached is the aircraft configuration change schedule.\n\nThanks.');
     setTimeout(()=>{
-      window.location.href = 'mailto:?bcc=' + encodeURIComponent(cleaned) + '&subject=' + subject + '&body=' + body;
+      window.location.href = 'mailto:?bcc=' + encodeURIComponent(emails) + '&subject=' + subject + '&body=' + body;
     }, 400);
-  };
+  }
+
+  document.getElementById('pdfBtn').onclick = runPreparePdf;
+  document.getElementById('emailBtn').onclick = runPrintAndEmail;
+  document.getElementById('dayModalPdfBtn').onclick = runPreparePdf;
+  document.getElementById('dayModalEmailBtn').onclick = runPrintAndEmail;
 
   // ---------- init ----------
   async function initAll(){
