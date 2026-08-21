@@ -1130,6 +1130,8 @@
     renderItemList();
   };
 
+  let editingItemId = null;
+
   function renderItemList(){
     const wrap = document.getElementById('itemList');
     wrap.innerHTML = '';
@@ -1146,19 +1148,41 @@
       down.disabled = idx===items.length-1;
       down.onclick = ()=> moveItem(idx, 1);
       orderBtns.appendChild(up); orderBtns.appendChild(down);
+      topLine.appendChild(orderBtns);
 
-      const name = document.createElement('span'); name.className='name'; name.textContent = it.name;
-      const del = document.createElement('button'); del.textContent='Delete item'; del.style.marginLeft='auto';
-      del.onclick = async ()=>{
-        if(!confirm('Delete "'+it.name+'"? This also removes it from all model assignments and any scheduled changes referencing it.')) return;
-        await apiDelete('config_events', 'item_id=eq.'+it.id);
-        await apiDelete('model_items', 'item_id=eq.'+it.id);
-        await apiDelete('config_items', 'id=eq.'+it.id);
-        await loadStaticData();
-        renderItemList();
-        await renderAll();
-      };
-      topLine.appendChild(orderBtns); topLine.appendChild(name); topLine.appendChild(del);
+      if(editingItemId === it.id){
+        const nameInput = document.createElement('input');
+        nameInput.value = it.name;
+        nameInput.style.cssText = 'padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;flex:1;';
+        const saveBtn = document.createElement('button'); saveBtn.textContent='Save'; saveBtn.style.color='var(--green)';
+        saveBtn.onclick = async ()=>{
+          const newName = nameInput.value.trim();
+          if(!newName){ alert('Name can\'t be empty.'); return; }
+          await apiPatch('config_items', 'id=eq.'+it.id, {name: newName});
+          editingItemId = null;
+          await loadStaticData();
+          renderItemList();
+          await renderAll();
+        };
+        const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel';
+        cancelBtn.onclick = ()=>{ editingItemId = null; renderItemList(); };
+        topLine.appendChild(nameInput); topLine.appendChild(saveBtn); topLine.appendChild(cancelBtn);
+      } else {
+        const name = document.createElement('span'); name.className='name'; name.textContent = it.name;
+        const edit = document.createElement('button'); edit.textContent='Edit'; edit.style.color='var(--accent)';
+        edit.onclick = ()=>{ editingItemId = it.id; renderItemList(); };
+        const del = document.createElement('button'); del.textContent='Delete item'; del.style.marginLeft='auto';
+        del.onclick = async ()=>{
+          if(!confirm('Delete "'+it.name+'"? This also removes it from all model assignments and any scheduled changes referencing it.')) return;
+          await apiDelete('config_events', 'item_id=eq.'+it.id);
+          await apiDelete('model_items', 'item_id=eq.'+it.id);
+          await apiDelete('config_items', 'id=eq.'+it.id);
+          await loadStaticData();
+          renderItemList();
+          await renderAll();
+        };
+        topLine.appendChild(name); topLine.appendChild(edit); topLine.appendChild(del);
+      }
       row.appendChild(topLine);
 
       const checks = document.createElement('div'); checks.className='item-model-checks';
