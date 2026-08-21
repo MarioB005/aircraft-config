@@ -130,7 +130,7 @@
   #printArea{display:none;}
   @page{margin:10mm;}
   @media print{
-    #gate, #app{display:none !important;}
+    #gate, #app, .modal-backdrop{display:none !important;}
     #printArea{display:block !important;}
     #printArea h1{font-size:26px;}
     #printArea h2{font-size:19px;}
@@ -1008,6 +1008,7 @@
   }
 
   async function runPreparePdf(){
+    document.querySelectorAll('.modal-backdrop.show').forEach(el=>el.classList.remove('show'));
     const weekCount = getWeekCountSetting();
     await preparePrintData(weekCount);
     buildPrintArea(weekCount);
