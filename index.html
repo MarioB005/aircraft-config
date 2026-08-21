@@ -316,6 +316,22 @@
   </div>
 </div>
 
+<!-- Quick-remove date picker modal -->
+<div class="modal-backdrop" id="quickRemoveModalBackdrop">
+  <div class="modal" style="max-width:360px;">
+    <h3><span id="quickRemoveTitle">Schedule removal</span><button class="close-x" id="quickRemoveClose">×</button></h3>
+    <div class="sub">Pick the day this removal should take effect.</div>
+    <div class="field" style="margin-bottom:16px;">
+      <label style="font-size:11px;color:var(--grey-strong);">Removal date</label><br>
+      <input type="date" id="quickRemoveDateInput" style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;font-size:14px;margin-top:4px;">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="primary" id="quickRemoveConfirmBtn">Schedule &amp; email update</button>
+      <button id="quickRemoveCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   // ---------- Supabase ----------
@@ -632,28 +648,53 @@
     });
   }
 
-  async function quickRemoveFromConfig(aircraftId, itemId){
+  let quickRemoveCtx = null; // {aircraftId, itemId}
+
+  function quickRemoveFromConfig(aircraftId, itemId){
     const a = aircraft.find(x=>x.id===aircraftId);
     const itemLabel = itemName(itemId);
-    if(!confirm('Schedule removal of "' + itemLabel + '" from ' + (a ? a.tail_number : 'this aircraft') + ', effective today, and open the email screen to send the update?')) return;
+    quickRemoveCtx = {aircraftId, itemId};
+    document.getElementById('quickRemoveTitle').textContent = 'Remove "' + itemLabel + '" from ' + (a ? a.tail_number : 'this aircraft');
+    document.getElementById('quickRemoveDateInput').value = toDateStr(new Date());
+    document.getElementById('quickRemoveModalBackdrop').classList.add('show');
+  }
 
-    const todayStr = toDateStr(new Date());
-    const todayRows = await apiGet('config_events?aircraft_id=eq.'+aircraftId+'&item_id=eq.'+itemId+'&event_date=eq.'+todayStr+'&select=*');
-    if(todayRows.length){
-      alert('There is already a change scheduled for this item today. Open today on the calendar to review or remove it first.');
+  document.getElementById('quickRemoveClose').onclick = ()=>{
+    document.getElementById('quickRemoveModalBackdrop').classList.remove('show');
+    quickRemoveCtx = null;
+  };
+  document.getElementById('quickRemoveCancelBtn').onclick = ()=>{
+    document.getElementById('quickRemoveModalBackdrop').classList.remove('show');
+    quickRemoveCtx = null;
+  };
+
+  document.getElementById('quickRemoveConfirmBtn').onclick = async ()=>{
+    if(!quickRemoveCtx) return;
+    const {aircraftId, itemId} = quickRemoveCtx;
+    const dateStr = document.getElementById('quickRemoveDateInput').value;
+    if(!dateStr){ alert('Pick a date first.'); return; }
+
+    const sameDayRows = await apiGet('config_events?aircraft_id=eq.'+aircraftId+'&item_id=eq.'+itemId+'&event_date=eq.'+dateStr+'&select=*');
+    if(sameDayRows.length){
+      alert('There is already a change scheduled for this item on that day. Open that day on the calendar to review or remove it first.');
       return;
     }
 
-    await apiInsert('config_events', {aircraft_id: aircraftId, item_id: itemId, event_date: todayStr, action:'REMOVE'}, false);
+    document.getElementById('quickRemoveModalBackdrop').classList.remove('show');
+    quickRemoveCtx = null;
 
-    weekOffset = 0; // jump the visible calendar to include today
+    await apiInsert('config_events', {aircraft_id: aircraftId, item_id: itemId, event_date: dateStr, action:'REMOVE'}, false);
+
+    // jump the visible calendar window so the chosen date is included
+    const chosen = new Date(dateStr+'T00:00:00');
+    weekOffset = Math.floor((getSunday(chosen) - getSunday(new Date())) / (7*24*60*60*1000));
     await loadWeekWindow();
     await renderWeeks();
     await renderCurrentConfig();
     await findAndRenderDiscrepancies();
 
     await runEmailToList();
-  }
+  };
 
   async function findAndRenderDiscrepancies(){
     const allEvents = await apiGet('config_events?select=*&order=event_date.asc');
