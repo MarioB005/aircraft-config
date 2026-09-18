@@ -1294,6 +1294,21 @@
   };
 
   // ---------- PDF / email ----------
+  // An aircraft belongs in the PDF/email if it has a scheduled change OR a day note today or in the
+  // future -- a day with only a note (no install/removal) still needs to reach the list, since a note
+  // is often the whole point of the update (e.g. "ferry flight, no config change").
+  function changedOrNotedAircraftIds(todayStr){
+    const ids = new Set();
+    Object.keys(weekEvents).forEach(k=>{
+      const [aid, dateStr] = k.split('|');
+      if(weekEvents[k] && weekEvents[k].length && dateStr >= todayStr) ids.add(aid);
+    });
+    Object.keys(dayNotes).forEach(k=>{
+      const [aid, dateStr] = k.split('|');
+      if(dayNotes[k] && dateStr >= todayStr) ids.add(aid);
+    });
+    return ids;
+  }
   function buildPrintArea(weekCount){
     const printArea = document.getElementById('printArea');
     printArea.innerHTML = '';
@@ -1307,17 +1322,13 @@
 
     const todayStr = toDateStr(win.today);
 
-    // Only aircraft with at least one change today or in the future — past changes are corrections, not upcoming work
-    const changedAircraftIds = new Set();
-    Object.keys(weekEvents).forEach(k=>{
-      const [aid, dateStr] = k.split('|');
-      if(weekEvents[k] && weekEvents[k].length && dateStr >= todayStr) changedAircraftIds.add(aid);
-    });
+    // Aircraft with at least one change OR note today or in the future — past changes are corrections, not upcoming work
+    const changedAircraftIds = changedOrNotedAircraftIds(todayStr);
     const changedAircraft = aircraft.filter(a=>changedAircraftIds.has(a.id));
 
     if(!changedAircraft.length){
       const none = document.createElement('div'); none.style.cssText='font-size:16px;color:#555;';
-      none.textContent = 'No configuration changes are scheduled for any aircraft today or in the future within this date range.';
+      none.textContent = 'No configuration changes or notes are scheduled for any aircraft today or in the future within this date range.';
       printArea.appendChild(none);
       return;
     }
@@ -1399,15 +1410,11 @@
     const win = getWindowDates();
     const todayStr = toDateStr(win.today);
 
-    const changedAircraftIds = new Set();
-    Object.keys(weekEvents).forEach(k=>{
-      const [aid, dateStr] = k.split('|');
-      if(weekEvents[k] && weekEvents[k].length && dateStr >= todayStr) changedAircraftIds.add(aid);
-    });
+    const changedAircraftIds = changedOrNotedAircraftIds(todayStr);
     const changedAircraft = aircraft.filter(a=>changedAircraftIds.has(a.id));
 
     if(!changedAircraft.length){
-      return 'No configuration changes are scheduled for any aircraft today or in the future within this date range.';
+      return 'No configuration changes or notes are scheduled for any aircraft today or in the future within this date range.';
     }
 
     const lines = [];
