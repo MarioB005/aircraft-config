@@ -917,12 +917,22 @@
     await findAndRenderDiscrepancies();
   };
 
+  // Tracks an in-flight note save so the PDF/email prep (which re-fetches day_notes fresh from the
+  // server) can wait for it instead of racing it. Without this, clicking "Email to list" right after
+  // typing a note can fire before the note's own save (triggered by the textarea losing focus) has
+  // finished its network round trip, so the email goes out as if the note was never added.
+  let pendingNoteSave = null;
   async function saveCurrentNote(){
     if(!dayModalCtx) return;
     const note = document.getElementById('noteTextarea').value.trim();
-    await apiUpsert('day_notes', { aircraft_id: dayModalCtx.aircraftId, note_date: dayModalCtx.dateStr, note: note || null });
-    await loadWeekWindow();
-    await renderWeeks();
+    const ctx = dayModalCtx;
+    const p = (async ()=>{
+      await apiUpsert('day_notes', { aircraft_id: ctx.aircraftId, note_date: ctx.dateStr, note: note || null });
+      await loadWeekWindow();
+      await renderWeeks();
+    })();
+    pendingNoteSave = p;
+    try{ await p; } finally { if(pendingNoteSave === p) pendingNoteSave = null; }
   }
   document.getElementById('noteTextarea').addEventListener('blur', saveCurrentNote);
 
@@ -1374,6 +1384,9 @@
   }
 
   async function preparePrintData(weekCount){
+    // If a note is still being saved (e.g. the day modal's textarea just lost focus a moment ago),
+    // wait for it so we don't read day_notes before that write lands.
+    if(pendingNoteSave) await pendingNoteSave;
     const win = getWindowDates();
     const from = toDateStr(win.week1Start);
     const to = toDateStr(addDays(win.week1Start, weekCount*7 - 1));
@@ -1458,7 +1471,12 @@
 
   document.getElementById('pdfBtn').onclick = runPreparePdf;
   document.getElementById('emailBtn').onclick = runEmailToList;
-  document.getElementById('dayModalEmailBtn').onclick = runEmailToList;
+  // In the day modal, the note textarea sits right above this button, so make sure whatever's
+  // currently typed is saved (not just queued via the textarea's blur handler) before sending.
+  document.getElementById('dayModalEmailBtn').onclick = async ()=>{
+    await saveCurrentNote();
+    await runEmailToList();
+  };
 
   // ---------- init ----------
   async function initAll(){
